@@ -3,6 +3,7 @@ import argparse
 def get_params():
     parser = argparse.ArgumentParser()
 
+    # Training arguments
     parser.add_argument('--batch_size', type=int, default=256,
                         help='batch size')
     parser.add_argument('--nworkers', type=int, default=4,
@@ -22,9 +23,12 @@ def get_params():
     parser.add_argument('--patience', type=int, default=5,
                         help='patience for callbacks')
     
+    # Data arguments
     parser.add_argument('--text_encoding', type=str, default='onehot',
                         help='the type of text encoder to use')
     parser.add_argument('--unit_type', type=str, default='word',
                         help='the type of text unit to use')
+    parser.add_argument('--data_root', type=str, default='',
+                        help='root directory of the dataset')
 
     return parser.parse_args()

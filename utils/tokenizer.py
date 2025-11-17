@@ -36,6 +36,9 @@ class Tokenizer(nn.Module):
         self.start_token = '<sos>'
         self.stop_token = '<eos>'
 
+    def forward(self, text: str) -> torch.Tensor:
+        return self.tokenize(text)
+
     def preprocess_text(self, text: str) -> list:
         text = text.strip()
         text = text.lower()
@@ -70,8 +73,11 @@ class Tokenizer(nn.Module):
         encoding = self.encoder(idxs)
         return encoding
 
-    def decode(self, encoding):
-        idxs = torch.argmax(encoding[1:-1], dim=-1)
+    def decode(self, encoding: torch.Tensor):
+        if len(encoding.shape) > 1:
+            idxs = torch.argmax(encoding[1:-1], dim=-1)
+        else:
+            idxs = encoding
         tokens = [self.text_map[idx.item()] for idx in idxs]
         if self.token_type=='word':
             output = ' '.join(tokens)
@@ -81,6 +87,6 @@ class Tokenizer(nn.Module):
 
 if __name__=='__main__':
     tokenizer = Tokenizer('onehot', '/home/marklind/asr_dict_5occurrences', 'word')
-    encoding = tokenizer.tokenize("Hi, my name is Mark. I don't really like spaghetti.")
+    encoding = tokenizer.tokenize("Hi, my name is Mark. I live in the United States.")
     decoded = tokenizer.decode(encoding)
     print(decoded)
