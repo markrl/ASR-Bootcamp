@@ -7,7 +7,7 @@ class Tokenizer(nn.Module):
     def __init__(self,
                  text_encoding: str,
                  dictionary_dir: str,
-                 token_type: str):
+                 token_type: str) -> None:
         super().__init__()
 
         if dictionary_dir is None:
@@ -73,7 +73,7 @@ class Tokenizer(nn.Module):
         encoding = self.encoder(idxs)
         return encoding
 
-    def decode(self, encoding: torch.Tensor):
+    def decode(self, encoding: torch.Tensor) -> str:
         if len(encoding.shape) > 1:
             idxs = torch.argmax(encoding[1:-1], dim=-1)
         else:
@@ -84,6 +84,17 @@ class Tokenizer(nn.Module):
         elif self.token_type=='character':
             output = ''.join(tokens)
         return output
+
+# class AudioPreprocessor(nn.Module):
+#     def __init__(self,
+#                  desired_fs: int,
+#                  representation: str,
+#                  ) -> None:
+#         self.desired_fs = desired_fs
+
+#     def forward(self, audio_file_path: str) -> tuple[torch.Tensor,int]:        
+#         return rep,fs
+        
 
 if __name__=='__main__':
     tokenizer = Tokenizer('onehot', '/home/marklind/asr_dict_5occurrences', 'word')

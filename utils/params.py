@@ -4,9 +4,9 @@ def get_params():
     parser = argparse.ArgumentParser()
 
     # Training arguments
-    parser.add_argument('--batch_size', type=int, default=256,
+    parser.add_argument('--batch_size', type=int, default=16,
                         help='batch size')
-    parser.add_argument('--nworkers', type=int, default=4,
+    parser.add_argument('--n_workers', type=int, default=4,
                         help='number of workers')
     parser.add_argument('--lr', type=float, default=1e-4,
                         help='base learning rate')
@@ -28,7 +28,9 @@ def get_params():
                         help='the type of text encoder to use')
     parser.add_argument('--unit_type', type=str, default='word',
                         help='the type of text unit to use')
-    parser.add_argument('--data_root', type=str, default='',
+    parser.add_argument('--data_root', type=str, default='/data/cv-corpus-23.0-2025-09-05/en',
                         help='root directory of the dataset')
+    parser.add_argument('--dictionary_dir', type=str, default='asr_dict_5occurrences',
+                        help='directory containing the dictionary files')
 
     return parser.parse_args()
