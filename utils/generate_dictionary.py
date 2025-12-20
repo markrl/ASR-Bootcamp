@@ -27,7 +27,7 @@ def generate_dictionary(input_data_paths, dictionary_dir):
                     else:
                         dictionary[unit] += 1
     sorted_items = sorted(dictionary.items(), key=lambda item: item[1], reverse=True)
-    sorted_items = [('<sos>', 100), ('<eos>', 100), ('<unk>', 100)] + sorted_items
+    sorted_items = [('<blank>', 100), ('<sos>', 100), ('<eos>', 100), ('<unk>', 100)] + sorted_items
     reverse_dictionary = {}
     keep_idxs = []
     for idx,(key,value) in enumerate(sorted_items):
@@ -47,6 +47,7 @@ def generate_dictionary(input_data_paths, dictionary_dir):
         pickle.dump(dictionary, f)
     with open(os.path.join(dictionary_dir, 'idx2unit.pkl'), 'wb') as f:
         pickle.dump(reverse_dictionary, f)
+    return dictionary, reverse_dictionary
 
 if __name__=='__main__':
     generate_dictionary(['/data/cv-corpus-23.0-2025-09-05/en/train.tsv', 
