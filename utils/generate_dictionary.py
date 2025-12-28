@@ -4,13 +4,12 @@ import pickle
 from tqdm import tqdm
 
 from utils.tokenizer import Tokenizer
-from utils.params import get_params
 
 from pdb import set_trace
 
-def generate_dictionary(input_data_paths, dictionary_dir):
-    params = get_params()
-    tokenizer = Tokenizer(params.text_encoding, None, params.unit_type)
+def generate_dict(params, input_data_paths, dictionary_dir, min_occurrences=5):
+    print('\n*Generating dictionary*')
+    tokenizer = Tokenizer(None, params.unit_type, not params.keep_punctuation)
     dictionary = {}
     for path in input_data_paths:
         print(path)
@@ -31,7 +30,7 @@ def generate_dictionary(input_data_paths, dictionary_dir):
     reverse_dictionary = {}
     keep_idxs = []
     for idx,(key,value) in enumerate(sorted_items):
-        if value<5:
+        if value<min_occurrences:
             dictionary.pop(key)
         else:
             keep_idxs.append(idx)
@@ -47,10 +46,13 @@ def generate_dictionary(input_data_paths, dictionary_dir):
         pickle.dump(dictionary, f)
     with open(os.path.join(dictionary_dir, 'idx2unit.pkl'), 'wb') as f:
         pickle.dump(reverse_dictionary, f)
+    print()
     return dictionary, reverse_dictionary
 
 if __name__=='__main__':
-    generate_dictionary(['/data/cv-corpus-23.0-2025-09-05/en/train.tsv', 
-                        '/data/cv-corpus-23.0-2025-09-05/en/test.tsv', 
-                        '/data/cv-corpus-23.0-2025-09-05/en/dev.tsv'],
-                        '/home/marklind/dictionary')
+    from params import get_params
+    generate_dict(params,
+                  ['/data/cv-corpus-23.0-2025-09-05/en/train_short.tsv', 
+                        '/data/cv-corpus-23.0-2025-09-05/en/test_short.tsv', 
+                        '/data/cv-corpus-23.0-2025-09-05/en/dev_short.tsv'],
+                  '/home/marklind/dictionary')

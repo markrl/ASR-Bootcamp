@@ -208,3 +208,5 @@ __marimo__/
 
 # Custom
 asr_dict*
+tmp_dict
+checkpoints

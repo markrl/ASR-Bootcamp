@@ -2,39 +2,36 @@ import os
 import torch
 import torch.nn as nn
 import pickle
+import argparse
 
 class Tokenizer(nn.Module):
     def __init__(self,
-                 text_encoding: str,
                  dictionary_dir: str,
-                 token_type: str) -> None:
+                 token_type: str,
+                 remove_punctuation: bool = False) -> None:
         super().__init__()
 
         if dictionary_dir is None:
-            self.dictionary = {'<sos>':0}
-            self.text_map = {0:'<sos>'}
+            self.dictionary = {'<blank>': 0, '<sos>': 1, '<eos>': 2}
+            self.text_map = {0: '<blank>', 1: '<sos>', 2: '<eos>'}
         else:
             with open(os.path.join(dictionary_dir, 'unit2idx.pkl'), 'rb') as f:
                 self.dictionary = pickle.load(f)
             with open(os.path.join(dictionary_dir, 'idx2unit.pkl'), 'rb') as f:
                 self.text_map = pickle.load(f)
-        
-        if text_encoding=='onehot':
-            num_classes = len(self.dictionary)
-            self.encoder = lambda x: nn.functional.one_hot(x, num_classes)
-        else:
-            return NotImplementedError
-        
+                
         self.token_type = token_type
+        self.remove_punctuation = remove_punctuation
 
         self.remove_symbols = ['.', '?', ',', '!', ':', ';', '"', '-', '`', '(', ')']
         self.alternative_apostrophes = ['\u2018', '\u2019', '\u201C', '\u201D']
         self.space_symbols = ["'"]
         if token_type=='character':
             self.remove_symbols += self.alternative_apostrophes + self.space_symbols
-        self.unknown_token = '<unk>'
-        self.start_token = '<sos>'
-        self.stop_token = '<eos>'
+        self.special_tokens = {'unknown': '<unk>',
+                               'start': '<sos>',
+                               'end': '<eos>',
+                               'blank': '<blank>'}
 
     def forward(self, text: str) -> torch.Tensor:
         return self.tokenize(text)
@@ -44,14 +41,18 @@ class Tokenizer(nn.Module):
         text = text.lower()
         for symbol in self.alternative_apostrophes:
             text = text.replace(symbol, "'")
-        for symbol in self.space_symbols:
-            text = text.replace(symbol, ' ' + symbol)
-        for symbol in self.remove_symbols:
-            text = text.replace(symbol, '')
+        if self.remove_punctuation:
+            for symbol in self.space_symbols:
+                text = text.replace(symbol, ' ' + symbol)
+            for symbol in self.remove_symbols:
+                text = text.replace(symbol, '')
+        else:
+            for symbol in self.remove_symbols:
+                text = text.replace(symbol, ' '+symbol)
         tokens = self.split_text(text)
         if "'" in tokens:
             tokens.remove("'")
-        return [self.start_token] + tokens + [self.stop_token]
+        return [self.special_tokens['start']] + tokens + [self.special_tokens['end']]
 
     def split_text(self, text: str) -> str:
         if self.token_type=='word':
@@ -68,36 +69,25 @@ class Tokenizer(nn.Module):
             if token in self.dictionary:
                 idxs.append(self.dictionary[token])
             else:
-                idxs.append(self.dictionary[self.unknown_token])
+                idxs.append(self.dictionary[self.special_tokens['unknown']])
         idxs = torch.LongTensor(idxs)
-        encoding = self.encoder(idxs)
-        return encoding
+        return idxs
 
     def decode(self, encoding: torch.Tensor) -> str:
         if len(encoding.shape) > 1:
             idxs = torch.argmax(encoding[1:-1], dim=-1)
         else:
-            idxs = encoding
-        tokens = [self.text_map[idx.item()] for idx in idxs]
+            idxs = encoding[1:-1]
+        tokens = [self.text_map[idx.item()] for idx in idxs if self.text_map[idx.item()]!=self.special_tokens['blank']]
         if self.token_type=='word':
             output = ' '.join(tokens)
         elif self.token_type=='character':
             output = ''.join(tokens)
         return output
 
-# class AudioPreprocessor(nn.Module):
-#     def __init__(self,
-#                  desired_fs: int,
-#                  representation: str,
-#                  ) -> None:
-#         self.desired_fs = desired_fs
-
-#     def forward(self, audio_file_path: str) -> tuple[torch.Tensor,int]:        
-#         return rep,fs
-        
 
 if __name__=='__main__':
-    tokenizer = Tokenizer('onehot', '/home/marklind/asr_dict_5occurrences', 'word')
+    tokenizer = Tokenizer('asr_dict_5occurrences', 'word', True)
     encoding = tokenizer.tokenize("Hi, my name is Mark. I live in the United States.")
     decoded = tokenizer.decode(encoding)
     print(decoded)

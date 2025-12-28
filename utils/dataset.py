@@ -10,6 +10,7 @@ from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 from lightning.pytorch import LightningDataModule
 
 from utils.tokenizer import Tokenizer
+from utils.generate_dictionary import generate_dict
 
 from pdb import set_trace
 
@@ -19,16 +20,27 @@ class AsrDataModule(LightningDataModule):
                  params: argparse.Namespace) -> None:
         super().__init__()
         self.params = params
-        self.tokenizer = Tokenizer(params.text_encoding,
-                                   params.dictionary_dir,
-                                   params.unit_type)
+        if params.dictionary_dir is None:
+            params.dictionary_dir = 'tmp_dict'
+            if os.path.exists(params.dictionary_dir):
+                os.system(f'rm -rf {params.dictionary_dir}')
+            generate_dict(params,
+                          ['/data/cv-corpus-23.0-2025-09-05/en/train_short.tsv',
+                           '/data/cv-corpus-23.0-2025-09-05/en/test_short.tsv',
+                           '/data/cv-corpus-23.0-2025-09-05/en/dev_short.tsv'],
+                          params.dictionary_dir,
+                          params.min_occurrences)
+        self.tokenizer = Tokenizer(params.dictionary_dir,
+                                   params.unit_type,
+                                   not params.keep_punctuation)
+        self.vocab_size = len(self.tokenizer.dictionary)
     
     def setup(self, stage: str = None) -> None:
         if stage == 'fit':
-            self.train_data = AsrData(params, self.tokenizer, 'train')
-            self.val_data = AsrData(params, self.tokenizer, 'dev')
+            self.train_data = AsrData(self.params, self.tokenizer, 'train')
+            self.val_data = AsrData(self.params, self.tokenizer, 'dev')
         if stage == 'test':
-            self.test_data = AsrData(params, self.tokenizer, 'test')
+            self.test_data = AsrData(self.params, self.tokenizer, 'test')
     
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -77,12 +89,13 @@ class AsrData(Dataset):
         self.params = params
         self.tokenizer = tokenizer
         self.fold = fold
-        self.tsv_path = os.path.join(params.data_root, f'{fold}.tsv')
+        self.tsv_path = os.path.join(params.data_root, f'{fold}_short.tsv')
         self.length = len(open(self.tsv_path, 'r').readlines())-1
-        self.clips_dir = os.path.join(params.data_root, 'clips')
+        self.clips_dir = os.path.join(params.data_root, 'clips_16k')
 
     def __len__(self) -> int:
-        return self.length
+        # return self.length
+        return 1
     
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, int]:
         # Skip the header
@@ -92,7 +105,7 @@ class AsrData(Dataset):
         filepath = line[1]
         sentence = line[3]
         x,fs = sf.read(os.path.join(self.clips_dir, filepath))
-        x = torch.from_numpy(x)
+        x = torch.from_numpy(x).float()
         y = self.tokenizer(sentence)
         return x,y,fs
 
