@@ -51,13 +51,15 @@ def main():
             accelerator='gpu',
             devices=params.gpus,
             overfit_batches=params.overfit_batches if params.overfit_batches<1 else int(params.overfit_batches),
-            limit_train_batches=1,
-            limit_val_batches=10,
+            limit_train_batches=params.limit_train_batches,
+            limit_val_batches=params.limit_val_batches,
             max_epochs=params.max_epochs,
             check_val_every_n_epoch=1,
             logger=False,
             log_every_n_steps=1,
             num_sanity_val_steps=1,
+            precision='bf16-mixed',
+            reload_dataloaders_every_n_epochs=1,
             strategy=strategy
         )
 

@@ -4,10 +4,13 @@ import torch.nn as nn
 import pickle
 import argparse
 
+from pdb import set_trace
+
 class Tokenizer(nn.Module):
     def __init__(self,
                  dictionary_dir: str,
                  token_type: str,
+                 use_sos_eos: bool = False,
                  remove_punctuation: bool = False) -> None:
         super().__init__()
 
@@ -22,6 +25,7 @@ class Tokenizer(nn.Module):
                 
         self.token_type = token_type
         self.remove_punctuation = remove_punctuation
+        self.use_sos_eos = use_sos_eos
 
         self.remove_symbols = ['.', '?', ',', '!', ':', ';', '"', '-', '`', '(', ')']
         self.alternative_apostrophes = ['\u2018', '\u2019', '\u201C', '\u201D']
@@ -52,7 +56,10 @@ class Tokenizer(nn.Module):
         tokens = self.split_text(text)
         if "'" in tokens:
             tokens.remove("'")
-        return [self.special_tokens['start']] + tokens + [self.special_tokens['end']]
+        if self.use_sos_eos:
+            return [self.special_tokens['start']] + tokens + [self.special_tokens['end']]
+        else:
+            return tokens
 
     def split_text(self, text: str) -> str:
         if self.token_type=='word':
@@ -74,10 +81,12 @@ class Tokenizer(nn.Module):
         return idxs
 
     def decode(self, encoding: torch.Tensor) -> str:
+        if self.use_sos_eos:
+            encoding = encoding[1:-1]
         if len(encoding.shape) > 1:
-            idxs = torch.argmax(encoding[1:-1], dim=-1)
+            idxs = torch.argmax(encoding, dim=-1)
         else:
-            idxs = encoding[1:-1]
+            idxs = encoding
         tokens = [self.text_map[idx.item()] for idx in idxs if self.text_map[idx.item()]!=self.special_tokens['blank']]
         if self.token_type=='word':
             output = ' '.join(tokens)
@@ -85,9 +94,23 @@ class Tokenizer(nn.Module):
             output = ''.join(tokens)
         return output
 
+    def collapse_ctc(self, encoding: torch.Tensor) -> str:
+        if len(encoding.shape) > 1:
+            idxs = torch.argmax(encoding, dim=-1)
+        else:
+            idxs = encoding
+        collapsed = []
+        prev_idx = -1
+        for idx in idxs:
+            if idx!=prev_idx:
+                collapsed.append(idx)
+                prev_idx = idx
+        return torch.Tensor([idx for idx in collapsed if self.text_map[idx.item()]!=self.special_tokens['blank']])
+
 
 if __name__=='__main__':
-    tokenizer = Tokenizer('asr_dict_5occurrences', 'word', True)
+    tokenizer = Tokenizer('asr_dict_5occurrences', 'word', False, True)
     encoding = tokenizer.tokenize("Hi, my name is Mark. I live in the United States.")
+    print(encoding)
     decoded = tokenizer.decode(encoding)
     print(decoded)

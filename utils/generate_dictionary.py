@@ -7,7 +7,7 @@ from utils.tokenizer import Tokenizer
 
 from pdb import set_trace
 
-def generate_dict(params, input_data_paths, dictionary_dir, min_occurrences=5):
+def generate_dict(params, input_data_paths, dictionary_dir, min_occurrences=5, use_sos_eos=False):
     print('\n*Generating dictionary*')
     tokenizer = Tokenizer(None, params.unit_type, not params.keep_punctuation)
     dictionary = {}
@@ -26,7 +26,10 @@ def generate_dict(params, input_data_paths, dictionary_dir, min_occurrences=5):
                     else:
                         dictionary[unit] += 1
     sorted_items = sorted(dictionary.items(), key=lambda item: item[1], reverse=True)
-    sorted_items = [('<blank>', 100), ('<sos>', 100), ('<eos>', 100), ('<unk>', 100)] + sorted_items
+    if use_sos_eos:
+        sorted_items = [('<blank>', 100), ('<sos>', 100), ('<eos>', 100), ('<unk>', 100)] + sorted_items
+    else:
+        sorted_items = [('<blank>', 100), ('<unk>', 100)] + sorted_items
     reverse_dictionary = {}
     keep_idxs = []
     for idx,(key,value) in enumerate(sorted_items):

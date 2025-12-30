@@ -32,6 +32,7 @@ class AsrDataModule(LightningDataModule):
                           params.min_occurrences)
         self.tokenizer = Tokenizer(params.dictionary_dir,
                                    params.unit_type,
+                                   params.model_type!='ctc',
                                    not params.keep_punctuation)
         self.vocab_size = len(self.tokenizer.dictionary)
     
@@ -94,8 +95,7 @@ class AsrData(Dataset):
         self.clips_dir = os.path.join(params.data_root, 'clips_16k')
 
     def __len__(self) -> int:
-        # return self.length
-        return 1
+        return self.length
     
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, int]:
         # Skip the header

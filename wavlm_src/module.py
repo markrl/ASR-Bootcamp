@@ -30,6 +30,15 @@ class AsrModule(LightningModule):
 
     def configure_model(self):
         self.model = WavlmModel(self.params, self.vocab_size)
+        self.model.freeze_fm()
+
+    def on_train_epoch_start(self):
+        if self.current_epoch==self.params.finetune_epoch-1:
+            self.trainer.datamodule.params.batch_size = 12
+        if self.current_epoch==self.params.finetune_epoch:
+            self.model.unfreeze_fm()
+            self.model.freeze_feat_extractor()
+            print('Fine tuning E2E')
 
     def training_step(self, 
                       batch: tuple[PackedSequence, PackedSequence, torch.Tensor],
@@ -45,11 +54,13 @@ class AsrModule(LightningModule):
             edit_dist, n_tokens = 0, 0
             for ii in range(Y_hat.shape[0]):
                 pred_seq = torch.argmax(Y_hat[ii,:Y_hat_lens[ii]], dim=-1)
-                mask = torch.ne(pred_seq, self.tokenizer.dictionary['<blank>'])
-                pred_seq = pred_seq[mask]
+                pred_seq = self.tokenizer.collapse_ctc(pred_seq)
                 targ_seq = Y[ii,:Y_lens[ii]]
                 edit_dist += edit_distance(targ_seq, pred_seq)
                 n_tokens += Y_lens[ii]
+                if batch_idx%100==0 and ii==0:
+                    print(f'TARGET: "{self.tokenizer.decode(targ_seq)}"')
+                    print(f'PREDICTED: "{self.tokenizer.decode(pred_seq)}"')
             wer = edit_dist/n_tokens
             self.log('train/wer', wer, on_step=True, sync_dist=True,
                      batch_size=self.params.batch_size, prog_bar=True)
@@ -68,8 +79,7 @@ class AsrModule(LightningModule):
         if self.params.val_wer:
             for ii in range(Y_hat.shape[0]):
                 pred_seq = torch.argmax(Y_hat[ii,:Y_hat_lens[ii]], dim=-1)
-                mask = torch.ne(pred_seq, self.tokenizer.dictionary['<blank>'])
-                pred_seq = pred_seq[mask]
+                pred_seq = self.tokenizer.collapse_ctc(pred_seq)
                 targ_seq = Y[ii,:Y_lens[ii]]
                 self.val_edit_dist += edit_distance(targ_seq, pred_seq)
                 self.val_n_tokens += Y_lens[ii]
@@ -97,8 +107,7 @@ class AsrModule(LightningModule):
         self.test_edit_dist += 0
         for ii in range(Y_hat.shape[0]):
             pred_seq = torch.argmax(Y_hat[ii,:Y_hat_lens[ii]], dim=-1)
-            mask = torch.ne(pred_seq, self.tokenizer.dictionary['<blank>'])
-            pred_seq = pred_seq[mask]
+            pred_seq = self.tokenizer.collapse_ctc(pred_seq)
             targ_seq = Y[ii,:Y_lens[ii]]
             self.test_edit_dist += edit_distance(targ_seq, pred_seq)
             self.test_n_tokens += Y_lens[ii]
@@ -112,9 +121,13 @@ class AsrModule(LightningModule):
         test_n_tokens = 0
 
     def configure_optimizers(self):
-        opt = torch.optim.Adam(self.parameters(), lr=self.params.lr,
-                                weight_decay=self.params.wd)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=10)
+        opt = torch.optim.Adam(self.parameters(), self.params.lr,
+                            weight_decay=self.params.wd)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            opt,
+            milestones=[self.params.finetune_epoch],
+            gamma=self.params.finetune_lr_mult
+        )
         return {
             'optimizer': opt,
             'lr_scheduler': scheduler

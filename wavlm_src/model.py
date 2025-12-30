@@ -30,8 +30,16 @@ class WavlmModel(nn.Module):
         for param in self.wavlm.parameters():
             param.requires_grad = False
 
+    def unfreeze_fm(self):
+        for param in self.wavlm.parameters():
+            param.requires_grad = True
+
     def freeze_feat_extractor(self):
         self.wavlm.feature_extractor._freeze_parameters()
+
+    def unfreeze_feat_extractor(self):
+        for param in self.wavlm.feature_extractor.parameters():
+            params.requires_grad = True
 
     def forward(self, x: PackedSequence) -> tuple[torch.Tensor, torch.Tensor]:
         x,x_lens = pad_packed_sequence(x, batch_first=True)
