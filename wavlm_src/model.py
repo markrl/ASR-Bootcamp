@@ -48,6 +48,7 @@ class WavlmModel(nn.Module):
     def forward(self, x: PackedSequence) -> tuple[torch.Tensor, torch.Tensor]:
         x,x_lens = pad_packed_sequence(x, batch_first=True)
         x = self.processor(x)
+        x_lens = torch.clamp(x_lens, 0, x.shape[-1])
         mask = self.generate_mask(x.shape, x_lens).to(x.device)
         if self.params.layer_weights:
             x = self.wavlm(input_values=x,

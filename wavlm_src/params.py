@@ -66,12 +66,28 @@ def get_params():
     # Audio processing arguments
     parser.add_argument('--normalization_fn', type=str, default=None,
                         help='signal normalization function')
+    parser.add_argument('--center', default=False, action='store_true',
+                        help='toggle signal centering')
     parser.add_argument('--preemphasis_alpha', type=float, default=None,
                         help='preemphasis coefficient')
     parser.add_argument('--input_feature_type', type=str, default='waveform',
                         help='feature type to input to the network')
     parser.add_argument('--augment', default=False, action='store_true',
                         help='apply spectral augmentation')
+    parser.add_argument('--augment_epoch', type=int, default=50,
+                        help='epoch to start applying specaugment')
+    parser.add_argument('--add_noise', default=False, action='store_true',
+                        help='add interfering noise for data augmentation')
+    parser.add_argument('--add_reverb', default=False, action='store_true',
+                        help='add reverberation for data augmentation')
+    parser.add_argument('--n_fft', type=int, default=400,
+                        help='fft length for stft')
+    parser.add_argument('--n_mels', type=int, default=128,
+                        help='number of mel filterbanks')
+    parser.add_argument('--freq_mask_param', type=int, default=30,
+                        help='number of frequency channels to mask with specaugment')
+    parser.add_argument('--time_mask_param', type=int, default=80,
+                        help='number of time frames to mask with specaugment')
 
     # Model arguments
     parser.add_argument('--model_type', type=str, default='ctc',

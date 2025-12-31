@@ -2,6 +2,9 @@ import argparse
 import torch
 import torch.nn as nn
 import torchaudio
+import torchaudio.transforms as T
+
+from pdb import set_trace
 
 class AudioProcessor(nn.Module):
     def __init__(self, params: argparse.Namespace) -> None:
@@ -20,34 +23,73 @@ class AudioProcessor(nn.Module):
         else:
             self.preemphasis = None
 
+        if params.input_feature_type in ['spec', 'melspec'] or params.augment:
+            self.stft = T.Spectrogram(n_fft=params.n_fft,
+                                      power=None)
+            self.istft = T.InverseSpectrogram(n_fft=params.n_fft)
+        if params.input_feature_type == 'melspec':
+            self.mel_scale = T.MelScale(n_mels=params.n_mels,
+                                        sample_rate=params.dataset_fs,
+                                        n_stft=params.n_fft//2+1)
+        self.augment = False
+        self.time_mask = T.TimeMasking(time_mask_param=params.time_mask_param)
+        self.freq_mask = T.FrequencyMasking(freq_mask_param=params.freq_mask_param)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.resample is not None:
             x = self.resample(x)
         if self.preemphasis is not None:
             x = self.Preemphasis(x)
 
-        if self.params.normalization_fn is not None:
-            if self.params.normalization_fn == 'power':
-                raise NotImplementedError
-            elif self.params.normalization_fn == 'amp':
-                raise NotImplementedError
-            else:
-                raise NotImplementedError
+        if self.params.center or self.params.normalization_fn is not None:
+            x = x.T
+            if self.params.center:
+                x = x-torch.mean(x, dim=0)
+
+            if self.params.normalization_fn is not None:
+                if self.params.normalization_fn == 'power':
+                    powers = torch.sum(x**2, dim=0)
+                    x = x/torch.sqrt(powers)
+                elif self.params.normalization_fn == 'amp':
+                    maxs = torch.max(torch.abs(x), dim=0)[0]
+                    x = x/maxs
+                elif self.params.normalization_fn == 'std':
+                    stds = torch.std(x, dim=0)
+                    x = x/stds
+                else:
+                    raise NotImplementedError
+            x = x.T
 
         if self.input_feature_type == 'waveform':
-            if self.params.augment:
+            if self.augment:
                 # Spec -> augment -> Wav
-                raise NotImplementedError
+                spec = self.stft(x)
+                mask = torch.ones(spec.shape).to(spec.device)
+                mask = self.time_mask(mask)
+                mask = self.freq_mask(mask)
+                spec = mask*spec
+                x = self.istft(spec)
             return x
         elif self.input_feature_type == 'melspec':
-            if self.params.augment:
+            if self.augment:
                 # Spec -> augment -> Melspec
                 raise NotImplementedError
             raise NotImplementedError
-        elif self.input_feature_type == 'spec':
-            if self.params.augment:
+        elif self.input_feature_type == 'spec': # *complex* spectrogram
+            if self.augment:
                 # Spec -> augment
+                raise NotImplementedError
+            raise NotImplementedError
+        elif self.input_feature_type == 'powerspec':
+            if self.augment:
+                # Spec -> augment -> power
                 raise NotImplementedError
             raise NotImplementedError
         else:
             raise NotImplementedError
+
+    def start_augment(self):
+        self.augment = True
+
+    def stop_augment(self):
+        self.augment = False

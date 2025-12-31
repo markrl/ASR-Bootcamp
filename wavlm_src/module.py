@@ -9,6 +9,7 @@ from typing import Any
 from utils.functional import edit_distance
 from wavlm_src.model import WavlmModel
 from utils.tokenizer import Tokenizer
+from utils.processor import AudioProcessor
 
 from pdb import set_trace
 
@@ -38,7 +39,11 @@ class AsrModule(LightningModule):
         if self.current_epoch==self.params.finetune_epoch:
             self.model.unfreeze_fm()
             self.model.freeze_feat_extractor()
-            print('Fine tuning E2E')
+            print('Now fine tuning E2E')
+        if self.params.augment:
+            if self.current_epoch==self.params.augment_epoch:
+                self.model.processor.start_augment()
+                print('Now applying SpecAugment')
 
     def training_step(self, 
                       batch: tuple[PackedSequence, PackedSequence, torch.Tensor],
