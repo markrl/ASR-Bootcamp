@@ -9,18 +9,15 @@ from pdb import set_trace
 
 def generate_dict(params, input_data_paths, dictionary_dir, min_occurrences=5, use_sos_eos=False):
     print('\n*Generating dictionary*')
-    tokenizer = Tokenizer(None, params.unit_type, not params.keep_punctuation)
+    tokenizer = Tokenizer(None, params.unit_type, False, not params.keep_punctuation)
     dictionary = {}
     for path in input_data_paths:
         print(path)
         with open(path, 'r') as f:
             for line in tqdm(f):
                 input_text = line.split('\t')[3]
-                input_units = tokenizer.preprocess_text(input_text)                    
+                input_units = tokenizer.preprocess_text(input_text)
                 for unit in input_units:
-                    # Skip special tokens to ensure they are placed at the beginning of the dictionary
-                    if '<' in unit or len(unit)==0:
-                        continue
                     if unit not in dictionary:
                         dictionary[unit] = 1
                     else:
@@ -54,6 +51,7 @@ def generate_dict(params, input_data_paths, dictionary_dir, min_occurrences=5, u
 
 if __name__=='__main__':
     from params import get_params
+    params = get_params()
     generate_dict(params,
                   ['/data/cv-corpus-23.0-2025-09-05/en/train_short.tsv', 
                         '/data/cv-corpus-23.0-2025-09-05/en/test_short.tsv', 

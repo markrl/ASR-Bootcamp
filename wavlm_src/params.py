@@ -82,5 +82,7 @@ def get_params():
                         help='freeze the wavlm model')
     parser.add_argument('--freeze_extractor', default=False, action='store_true',
                         help='freeze the feature extractor of the wavlm model')
+    parser.add_argument('--layer_weights', default=False, action='store_true',
+                        help='use a weighted combination of WavLM layer output rather than final layer')
 
     return parser.parse_args()

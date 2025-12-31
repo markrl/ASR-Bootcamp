@@ -27,9 +27,19 @@ class Tokenizer(nn.Module):
         self.remove_punctuation = remove_punctuation
         self.use_sos_eos = use_sos_eos
 
-        self.remove_symbols = ['.', '?', ',', '!', ':', ';', '"', '-', '`', '(', ')']
-        self.alternative_apostrophes = ['\u2018', '\u2019', '\u201C', '\u201D']
+        self.remove_symbols = ['.', '?', ',', '!', ':', ';', '"', '`', '(', ')', '…', '/', '[', ']', 
+                                '«', '»', '·', '→', '¡', '#', '„']
+        self.alternative_apostrophes = ['\u2018', '\u2019', '\u201C', '\u201D', '´']
         self.space_symbols = ["'"]
+        self.other_replacements = {'&': ' and ',
+                                   '=': ' equals ',
+                                   '~': ' ',
+                                   '-': ' ',
+                                   '–': ' ',
+                                   '—': ' ',
+                                   '€': ' euros ',
+                                   '%': ' percent ',
+                                   '+': ' plus '}
         if token_type=='character':
             self.remove_symbols += self.alternative_apostrophes + self.space_symbols
         self.special_tokens = {'unknown': '<unk>',
@@ -45,14 +55,22 @@ class Tokenizer(nn.Module):
         text = text.lower()
         for symbol in self.alternative_apostrophes:
             text = text.replace(symbol, "'")
+        for symbol in self.other_replacements:
+            text = text.replace(symbol, self.other_replacements[symbol])
         if self.remove_punctuation:
             for symbol in self.space_symbols:
                 text = text.replace(symbol, ' ' + symbol)
             for symbol in self.remove_symbols:
-                text = text.replace(symbol, '')
+                if symbol=='-':
+                    text = text.replace(symbol, ' ')
+                else:
+                    text = text.replace(symbol, '')
         else:
             for symbol in self.remove_symbols:
-                text = text.replace(symbol, ' '+symbol)
+                if symbol=='-':
+                    text = text.replace(symbol, ' '+symbol+' ')
+                else:
+                    text = text.replace(symbol, ' '+symbol)
         tokens = self.split_text(text)
         if "'" in tokens:
             tokens.remove("'")

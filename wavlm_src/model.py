@@ -1,6 +1,7 @@
 import argparse
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch.nn.utils.rnn import PackedSequence, pad_packed_sequence
 from transformers import AutoModel
 
@@ -18,6 +19,9 @@ class WavlmModel(nn.Module):
         self.processor = AudioProcessor(params)
         self.wavlm = AutoModel.from_pretrained('microsoft/wavlm-large', 
                                                 trust_remote_code=True)
+        if params.layer_weights:
+            self.layer_weights = nn.Parameter(torch.ones(self.wavlm.config.num_hidden_layers))
+
         if params.freeze_fm:
             self.freeze_fm()
         if params.freeze_extractor:
@@ -45,8 +49,16 @@ class WavlmModel(nn.Module):
         x,x_lens = pad_packed_sequence(x, batch_first=True)
         x = self.processor(x)
         mask = self.generate_mask(x.shape, x_lens).to(x.device)
-        x = self.wavlm(input_values=x, 
-                       attention_mask=mask).last_hidden_state
+        if self.params.layer_weights:
+            x = self.wavlm(input_values=x,
+                        attention_mask=mask,
+                        output_hidden_states=True).hidden_states
+            x = torch.stack(x[1:], dim=0)
+            weights = F.softmax(self.layer_weights, dim=0).view(-1,1,1,1)
+            x = (x*weights).sum(dim=0)
+        else:
+            x = self.wavlm(input_values=x, 
+                        attention_mask=mask).last_hidden_state
         x_lens = self.wavlm._get_feat_extract_output_lengths(x_lens)
         x = self.linear(x)
         x = self.log_smax(x)

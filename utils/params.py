@@ -8,7 +8,7 @@ def get_params():
                         help='name of this run')
     parser.add_argument('--seed', type=int, default=18792,
                         help='random seed')
-    parser.add_argument('--batch_size', type=int, default=16,
+    parser.add_argument('--batch_size', type=int, default=64,
                         help='batch size')
     parser.add_argument('--n_workers', type=int, default=4,
                         help='number of workers')
@@ -32,6 +32,14 @@ def get_params():
                         help='min or max')
     parser.add_argument('--patience', type=int, default=5,
                         help='patience for callbacks')
+    parser.add_argument('--train_wer', default=False, action='store_true',
+                        help='turn on tracking for wer during training')
+    parser.add_argument('--val_wer', default=False, action='store_true',
+                        help='turn on tracking for wer during validation')
+    parser.add_argument('--finetune_epoch', type=int, default=50,
+                        help='epoch to start fine tuning end-to-end')
+    parser.add_argument('--finetune_lr_mult', type=float, default=0.01,
+                        help='factor to multiply learning rate by when starting fine tuning')                    
     
     # Data arguments
     parser.add_argument('--text_encoding', type=str, default='onehot',
@@ -48,6 +56,12 @@ def get_params():
                         help='size of the vocabulary; default `0` automatically sets to the size of dictionary')
     parser.add_argument('--dataset_fs', type=float, default=16000,
                         help='sampling rate of the dataset')
+    parser.add_argument('--keep_punctuation', default=False, action='store_true',
+                        help='keep punctuation marks as tokens')
+    parser.add_argument('--limit_train_batches', type=float, default=0.01,
+                        help='percentage of the training data to use per epoch')
+    parser.add_argument('--limit_val_batches', type=float, default=0.5,
+                        help='percentage of the validation data to use per epoch')
 
     # Audio processing arguments
     parser.add_argument('--normalization_fn', type=str, default=None,
