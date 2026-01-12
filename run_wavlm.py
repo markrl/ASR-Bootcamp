@@ -5,7 +5,7 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.strategies import ModelParallelStrategy
 
 from wavlm_src.params import get_params
-from wavlm_src.module import AsrModule
+from wavlm_src.module import WavlmModule
 from utils.dataset import AsrDataModule
 
 def main():
@@ -66,7 +66,7 @@ def main():
     # Define model and data
     data_module = AsrDataModule(params)
     vocab_size = max([data_module.vocab_size, params.vocab_size])
-    module = AsrModule(params, vocab_size, data_module.tokenizer)
+    module = WavlmModule(params, vocab_size, data_module.tokenizer)
     
     trainer.fit(module, data_module)
     trainer.test(module, data_module, ckpt_path='best')

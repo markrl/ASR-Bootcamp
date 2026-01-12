@@ -13,7 +13,7 @@ from utils.processor import AudioProcessor
 
 from pdb import set_trace
 
-class WavlmModule(LightningModule):
+class RnntModule(LightningModule):
     def __init__(self, 
                  params: argparse.Namespace,
                  vocab_size: int,
@@ -23,14 +23,14 @@ class WavlmModule(LightningModule):
         self.params = params
         self.vocab_size = vocab_size
         self.tokenizer = tokenizer
-        self.criterion = nn.CTCLoss(zero_infinity=True)
+        self.criterion = RnntLoss()
         self.val_n_tokens = 0
         self.val_edit_dist = 0
         self.test_n_tokens = 0
         self.test_edit_dist = 0
 
     def configure_model(self):
-        self.model = WavlmModel(self.params, self.vocab_size)
+        self.model = RnntModel(self.params, self.vocab_size)
         self.model.freeze_fm()
 
     def on_train_epoch_start(self):

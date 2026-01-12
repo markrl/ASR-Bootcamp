@@ -10,7 +10,8 @@ class Tokenizer(nn.Module):
     def __init__(self,
                  dictionary_dir: str,
                  token_type: str,
-                 use_sos_eos: bool = False,
+                 use_sos: bool = False,
+                 use_eos: bool = False,
                  remove_punctuation: bool = False) -> None:
         super().__init__()
 
@@ -25,7 +26,8 @@ class Tokenizer(nn.Module):
                 
         self.token_type = token_type
         self.remove_punctuation = remove_punctuation
-        self.use_sos_eos = use_sos_eos
+        self.use_sos = use_sos
+        self.use_eos = use_eos
 
         self.remove_symbols = ['.', '?', ',', '!', ':', ';', '"', '`', '(', ')', '…', '/', '[', ']', 
                                 '«', '»', '·', '→', '¡', '#', '„']
@@ -74,10 +76,11 @@ class Tokenizer(nn.Module):
         tokens = self.split_text(text)
         if "'" in tokens:
             tokens.remove("'")
-        if self.use_sos_eos:
-            return [self.special_tokens['start']] + tokens + [self.special_tokens['end']]
-        else:
-            return tokens
+        if self.use_sos:
+            tokens = [self.special_tokens['start']] + tokens
+        if self.use_eos:
+            tokens += [self.special_tokens['end']]
+        return tokens
 
     def split_text(self, text: str) -> str:
         if self.token_type=='word':
@@ -99,8 +102,10 @@ class Tokenizer(nn.Module):
         return idxs
 
     def decode(self, encoding: torch.Tensor) -> str:
-        if self.use_sos_eos:
-            encoding = encoding[1:-1]
+        if self.use_sos:
+            encoding = encoding[1:]
+        if self.use_eos:
+            encoding = encoding[:-1]
         if len(encoding.shape) > 1:
             idxs = torch.argmax(encoding, dim=-1)
         else:

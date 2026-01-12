@@ -61,7 +61,7 @@ class AudioProcessor(nn.Module):
             x = x.T
 
         if self.input_feature_type == 'waveform':
-            if self.augment:
+            if self.augment and self.training:
                 # Spec -> augment -> Wav
                 spec = self.stft(x)
                 mask = torch.ones(spec.shape).to(spec.device)
@@ -69,24 +69,31 @@ class AudioProcessor(nn.Module):
                 mask = self.freq_mask(mask)
                 spec = mask*spec
                 x = self.istft(spec)
-            return x
         elif self.input_feature_type == 'melspec':
-            if self.augment:
+            x = self.stft(x)**2
+            if self.augment and self.training:
                 # Spec -> augment -> Melspec
-                raise NotImplementedError
-            raise NotImplementedError
+                x = self.time_mask(x)
+                x = self.freq_mask(x)
+            x = self.mel_scale(x)
         elif self.input_feature_type == 'spec': # *complex* spectrogram
-            if self.augment:
+            x = self.stft(x)
+            if self.augment and self.training:
                 # Spec -> augment
-                raise NotImplementedError
-            raise NotImplementedError
+                mask = torch.ones(spec.shape).to(spec.device)
+                mask = self.time_mask(mask)
+                mask = self.freq_mask(mask)
+                x = mask*x
         elif self.input_feature_type == 'powerspec':
-            if self.augment:
-                # Spec -> augment -> power
-                raise NotImplementedError
-            raise NotImplementedError
+            x = self.stft(x)**2
+            if self.augment and self.training:
+                # Spec -> augment
+                x = self.time_mask(x)
+                x = self.freq_mask(x)
         else:
             raise NotImplementedError
+            
+        return x
 
     def start_augment(self):
         self.augment = True
