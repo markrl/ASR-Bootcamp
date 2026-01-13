@@ -51,15 +51,15 @@ class RnntModule(LightningModule):
         X,Y,fs = batch
         Y,Y_lens = pad_packed_sequence(Y, batch_first=True)
         Y_flat = torch.cat([yy[:yy_lens] for yy,yy_lens in zip(Y,Y_lens)])
-        Y_hat,Y_hat_lens = self.model(X)
-        loss = self.criterion(Y_hat.permute(1,0,2), Y_flat, Y_hat_lens, Y_lens)
+        H, X_lens, Y_lens, _ = self.model(X)
+        loss = self.criterion(H, Y, X_lens, Y_lens)
         self.log('train/loss', loss.item(), on_step=True, sync_dist=True,
                  batch_size=self.params.batch_size, prog_bar=True)
         if self.params.train_wer:
             edit_dist, n_tokens = 0, 0
+            self.model.eval()
             for ii in range(Y_hat.shape[0]):
-                pred_seq = torch.argmax(Y_hat[ii,:Y_hat_lens[ii]], dim=-1)
-                pred_seq = self.tokenizer.collapse_ctc(pred_seq)
+                pred_seq = model.greedy_search(X)
                 targ_seq = Y[ii,:Y_lens[ii]]
                 edit_dist += edit_distance(targ_seq, pred_seq)
                 n_tokens += Y_lens[ii]
