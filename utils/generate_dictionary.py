@@ -25,9 +25,9 @@ def generate_dict(params, input_data_paths, dictionary_dir, min_occurrences=5, u
     sorted_items = sorted(dictionary.items(), key=lambda item: item[1], reverse=True)
     special_tokens = [('<blank>', 100), ('<unk>', 100)]
     if use_sos:
-        special_tokens += ['<sos>', 100]
+        special_tokens += [('<sos>', 100)]
     if use_eos:
-        special_tokens += ['<eos>', 100]
+        special_tokens += [('<eos>', 100)]
     sorted_items = special_tokens + sorted_items
     reverse_dictionary = {}
     keep_idxs = []

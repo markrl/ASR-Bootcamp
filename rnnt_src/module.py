@@ -4,12 +4,16 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import PackedSequence, pad_packed_sequence
 from lightning.pytorch import LightningModule
-from typing import Any
+
+from speechbrain.nnet.loss.transducer_loss import TransducerLoss
 
 from utils.functional import edit_distance
-from wavlm_src.model import WavlmModel
+from rnnt_src.model import RnntModel
 from utils.tokenizer import Tokenizer
 from utils.processor import AudioProcessor
+# from utils.losses import RnntLoss
+
+from typing import Any
 
 from pdb import set_trace
 
@@ -23,7 +27,7 @@ class RnntModule(LightningModule):
         self.params = params
         self.vocab_size = vocab_size
         self.tokenizer = tokenizer
-        self.criterion = RnntLoss()
+        self.criterion = TransducerLoss()
         self.val_n_tokens = 0
         self.val_edit_dist = 0
         self.test_n_tokens = 0
@@ -31,15 +35,8 @@ class RnntModule(LightningModule):
 
     def configure_model(self):
         self.model = RnntModel(self.params, self.vocab_size)
-        self.model.freeze_fm()
 
     def on_train_epoch_start(self):
-        if self.current_epoch==self.params.finetune_epoch-1:
-            self.trainer.datamodule.params.batch_size = 12
-        if self.current_epoch==self.params.finetune_epoch:
-            self.model.unfreeze_fm()
-            self.model.freeze_feat_extractor()
-            print('Now fine tuning E2E')
         if self.params.augment:
             if self.current_epoch==self.params.augment_epoch:
                 self.model.processor.start_augment()
@@ -50,18 +47,18 @@ class RnntModule(LightningModule):
                       batch_idx: int) -> Any:
         X,Y,fs = batch
         Y,Y_lens = pad_packed_sequence(Y, batch_first=True)
-        Y_flat = torch.cat([yy[:yy_lens] for yy,yy_lens in zip(Y,Y_lens)])
-        H, X_lens, Y_lens, _ = self.model(X)
-        loss = self.criterion(H, Y, X_lens, Y_lens)
+        H,X_lens = self.model(X, Y)
+        loss = self.criterion(H, Y, X_lens.to(H.device), Y_lens.to(H.device))
         self.log('train/loss', loss.item(), on_step=True, sync_dist=True,
                  batch_size=self.params.batch_size, prog_bar=True)
         if self.params.train_wer:
             edit_dist, n_tokens = 0, 0
             self.model.eval()
-            for ii in range(Y_hat.shape[0]):
-                pred_seq = model.greedy_search(X)
+            pred_seqs = model.greedy_search(X)
+            for ii in range(len(pred_seqs)):
+                pred_seq = pred_seqs[ii]
                 targ_seq = Y[ii,:Y_lens[ii]]
-                edit_dist += edit_distance(targ_seq, pred_seq)
+                edit_dist += edit_distance(targ_seq, pred_seqs)
                 n_tokens += Y_lens[ii]
                 if batch_idx%100==0 and ii==0:
                     print(f'TARGET: "{self.tokenizer.decode(targ_seq)}"')
@@ -76,15 +73,15 @@ class RnntModule(LightningModule):
                       batch_idx: int) -> Any:
         X,Y,fs = batch
         Y,Y_lens = pad_packed_sequence(Y, batch_first=True)
-        Y_flat = torch.cat([yy[:yy_lens] for yy,yy_lens in zip(Y,Y_lens)])
-        Y_hat,Y_hat_lens = self.model(X)
-        loss = self.criterion(Y_hat.permute(1,0,2), Y_flat, Y_hat_lens, Y_lens)
+        H,X_lens = self.model(X, Y)
+        set_trace()
+        loss = self.criterion(H, Y, X_lens.to(H.device), Y_lens.to(H.device))
         self.log('val/loss', loss.item(), on_step=False, sync_dist=True,
                  batch_size=self.params.batch_size, on_epoch=True, prog_bar=not self.params.val_wer)
         if self.params.val_wer:
-            for ii in range(Y_hat.shape[0]):
-                pred_seq = torch.argmax(Y_hat[ii,:Y_hat_lens[ii]], dim=-1)
-                pred_seq = self.tokenizer.collapse_ctc(pred_seq)
+            pred_seqs = model.greedy_search(X)
+            for ii in range(len(pred_seqs)):
+                pred_seq = pred_seqs[ii]
                 targ_seq = Y[ii,:Y_lens[ii]]
                 self.val_edit_dist += edit_distance(targ_seq, pred_seq)
                 self.val_n_tokens += Y_lens[ii]
@@ -103,16 +100,13 @@ class RnntModule(LightningModule):
                   batch_idx: int) -> Any:
         X,Y,fs = batch
         Y,Y_lens = pad_packed_sequence(Y, batch_first=True)
-        Y_flat = torch.cat([yy[:yy_lens] for yy,yy_lens in zip(Y,Y_lens)])
-        Y_hat,Y_hat_lens = self.model(X)
-        loss = self.criterion(Y_hat.permute(1,0,2), Y_flat, Y_hat_lens, Y_lens)
+        H,X_lens = self.model(X, Y)
+        loss = self.criterion(H, Y, X_lens, Y_lens)
         self.log('test/loss', loss.item(), on_step=False, sync_dist=True, 
                  batch_size=self.params.batch_size, on_epoch=True)
-        self.test_n_tokens += torch.sum(Y_lens)
-        self.test_edit_dist += 0
-        for ii in range(Y_hat.shape[0]):
-            pred_seq = torch.argmax(Y_hat[ii,:Y_hat_lens[ii]], dim=-1)
-            pred_seq = self.tokenizer.collapse_ctc(pred_seq)
+        pred_seqs = model.greedy_search(X)
+        for ii in range(len(pred_seqs)):
+            pred_seq = pred_seqs[ii]
             targ_seq = Y[ii,:Y_lens[ii]]
             self.test_edit_dist += edit_distance(targ_seq, pred_seq)
             self.test_n_tokens += Y_lens[ii]

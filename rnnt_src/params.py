@@ -70,7 +70,7 @@ def get_params():
                         help='toggle signal centering')
     parser.add_argument('--preemphasis_alpha', type=float, default=None,
                         help='preemphasis coefficient')
-    parser.add_argument('--input_feature_type', type=str, default='waveform',
+    parser.add_argument('--input_feature_type', type=str, default='melspec',
                         help='feature type to input to the network')
     parser.add_argument('--augment', default=False, action='store_true',
                         help='apply spectral augmentation')
@@ -88,19 +88,38 @@ def get_params():
                         help='number of frequency channels to mask with specaugment')
     parser.add_argument('--time_mask_param', type=int, default=80,
                         help='number of time frames to mask with specaugment')
+    parser.add_argument('--cnn_feat_extractor', default=False, action='store_true',
+                        help='toggle to use a cnn-based feature extractor')
 
     # Model arguments
     parser.add_argument('--model_type', type=str, default='rnnt',
                         help='the type of asr model being trained')
     parser.add_argument('--predictor_type', type=str, default='gru',
                         help='the backbone s2s model of the predictor')
-    parser.add_argument('--n_predictor_layers', type=int, default=5,
+    parser.add_argument('--n_predictor_layers', type=int, default=1,
                         help='number of layers in the predictor network')
     parser.add_argument('--transcriber_type', type=str, default='gru',
                         help='the backbone s2s model of the transcriber')
-    parser.add_argument('--n_transciber_layers', type=int, default=5,
+    parser.add_argument('--n_transcriber_layers', type=int, default=2,
                         help='number of layers in the transcriber network')
-    
+    parser.add_argument('--transcriber_s2s_out_dim', type=int, default=128,
+                        help='hidden dimension of the transcriber sequence-to-sequence component')
+    parser.add_argument('--predictor_s2s_out_dim', type=int, default=128,
+                        help='hidden dimension of the predictor sequence-to-sequence component')
+    parser.add_argument('--joiner_in_dim', type=int, default=128,
+                        help='joiner input dimension')
+    parser.add_argument('--embedding_dim', type=int, default=512,
+                        help='text embedding dimension')
+    parser.add_argument('--transcriber_s2s_dropout_p', type=float, default=0.0,
+                        help='dropout rate for transcriber sequence-to-sequence component output')
+    parser.add_argument('--predictor_s2s_dropout_p', type=float, default=0.0,
+                        help='dropout rate for predictor sequence-to-sequence component output')
+    parser.add_argument('--predictor_out_dropout_p', type=float, default=0.0,
+                        help='dropout rate for predictor output')
+    parser.add_argument('--transcriber_bidirectional', default=False, action='store_true',
+                        help='use a bidirectional transcriber')
+    parser.add_argument('--downsample_time_factor', type=int, default=0,
+                        help='how much to downsample the time dimension')
     
 
     return parser.parse_args()

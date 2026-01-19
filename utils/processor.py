@@ -7,7 +7,9 @@ import torchaudio.transforms as T
 from pdb import set_trace
 
 class AudioProcessor(nn.Module):
-    def __init__(self, params: argparse.Namespace) -> None:
+    def __init__(self, 
+                 params: argparse.Namespace
+                 ) -> None:
         super().__init__()
         self.params = params
         self.input_feature_type = params.input_feature_type
@@ -35,7 +37,16 @@ class AudioProcessor(nn.Module):
         self.time_mask = T.TimeMasking(time_mask_param=params.time_mask_param)
         self.freq_mask = T.FrequencyMasking(freq_mask_param=params.freq_mask_param)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _get_new_lens(self, 
+                      x_lens: torch.Tensor
+                      ) -> torch.Tensor:
+        x_lens = torch.ceil(x_lens/self.stft.hop_length)
+        return x_lens.long()
+
+    def forward(self, 
+                x: torch.Tensor,
+                x_lens: torch.Tensor
+                ) -> torch.Tensor:
         if self.resample is not None:
             x = self.resample(x)
         if self.preemphasis is not None:
@@ -70,12 +81,14 @@ class AudioProcessor(nn.Module):
                 spec = mask*spec
                 x = self.istft(spec)
         elif self.input_feature_type == 'melspec':
-            x = self.stft(x)**2
+            x = torch.abs(self.stft(x))**2
             if self.augment and self.training:
                 # Spec -> augment -> Melspec
                 x = self.time_mask(x)
                 x = self.freq_mask(x)
             x = self.mel_scale(x)
+            x = x.permute(0,2,1)
+            x_lens = self._get_new_lens(x_lens)
         elif self.input_feature_type == 'spec': # *complex* spectrogram
             x = self.stft(x)
             if self.augment and self.training:
@@ -84,19 +97,23 @@ class AudioProcessor(nn.Module):
                 mask = self.time_mask(mask)
                 mask = self.freq_mask(mask)
                 x = mask*x
+            x = x.permute(0,2,1)
+            x_lens = self._get_new_lens(x_lens)
         elif self.input_feature_type == 'powerspec':
             x = self.stft(x)**2
             if self.augment and self.training:
                 # Spec -> augment
                 x = self.time_mask(x)
                 x = self.freq_mask(x)
+            x = x.permute(0,2,1)
+            x_lens = self._get_new_lens(x_lens)
         else:
             raise NotImplementedError
             
-        return x
+        return x, x_lens
 
-    def start_augment(self):
+    def start_augment(self) -> None:
         self.augment = True
 
-    def stop_augment(self):
+    def stop_augment(self) -> None:
         self.augment = False

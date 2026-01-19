@@ -26,6 +26,8 @@ class WavlmModel(nn.Module):
             self.freeze_fm()
         if params.freeze_extractor:
             self.freeze_feat_extractor()
+        if params.output.layer_norm:
+            self.output_layer_norm = nn.LayerNorm(self.wavlm.config.output_hidden_size)
         self.linear = nn.Linear(self.wavlm.config.output_hidden_size, vocab_size)
         self.dropout = nn.Dropout(params.logit_dropout_p)
         self.log_smax = nn.LogSoftmax(dim=-1)
@@ -47,7 +49,7 @@ class WavlmModel(nn.Module):
 
     def forward(self, x: PackedSequence) -> tuple[torch.Tensor, torch.Tensor]:
         x,x_lens = pad_packed_sequence(x, batch_first=True)
-        x = self.processor(x)
+        x,x_lens = self.processor(x,x_lens)
         x_lens = torch.clamp(x_lens, 0, x.shape[-1])
         mask = self.generate_mask(x.shape, x_lens).to(x.device)
         if self.params.layer_weights:
@@ -61,6 +63,9 @@ class WavlmModel(nn.Module):
             x = self.wavlm(input_values=x, 
                         attention_mask=mask).last_hidden_state
         x_lens = self.wavlm._get_feat_extract_output_lengths(x_lens)
+        if self.params.output_layer_norm:
+            x = self.output_layer_norm(x)
+        x = self.dropout(x)
         x = self.linear(x)
         x = self.log_smax(x)
         return x, x_lens

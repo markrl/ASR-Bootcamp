@@ -80,7 +80,7 @@ class WavlmModule(LightningModule):
         Y_hat,Y_hat_lens = self.model(X)
         loss = self.criterion(Y_hat.permute(1,0,2), Y_flat, Y_hat_lens, Y_lens)
         self.log('val/loss', loss.item(), on_step=False, sync_dist=True,
-                 batch_size=self.params.batch_size, on_epoch=True, prog_bar=not self.params.val_wer)
+                 batch_size=self.params.batch_size, on_epoch=True, prog_bar=True)
         if self.params.val_wer:
             for ii in range(Y_hat.shape[0]):
                 pred_seq = torch.argmax(Y_hat[ii,:Y_hat_lens[ii]], dim=-1)
@@ -108,8 +108,6 @@ class WavlmModule(LightningModule):
         loss = self.criterion(Y_hat.permute(1,0,2), Y_flat, Y_hat_lens, Y_lens)
         self.log('test/loss', loss.item(), on_step=False, sync_dist=True, 
                  batch_size=self.params.batch_size, on_epoch=True)
-        self.test_n_tokens += torch.sum(Y_lens)
-        self.test_edit_dist += 0
         for ii in range(Y_hat.shape[0]):
             pred_seq = torch.argmax(Y_hat[ii,:Y_hat_lens[ii]], dim=-1)
             pred_seq = self.tokenizer.collapse_ctc(pred_seq)

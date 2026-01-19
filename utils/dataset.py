@@ -30,11 +30,11 @@ class AsrDataModule(LightningDataModule):
                            '/data/cv-corpus-23.0-2025-09-05/en/dev_short.tsv'],
                           params.dictionary_dir,
                           params.min_occurrences,
-                          params.model_type!='ctc',
+                          params.model_type=='aed',
                           params.model_type=='aed')
         self.tokenizer = Tokenizer(params.dictionary_dir,
                                    params.unit_type,
-                                   params.model_type!='ctc',
+                                   params.model_type=='aed',
                                    params.model_type=='aed',
                                    not params.keep_punctuation)
         self.vocab_size = len(self.tokenizer.dictionary)
