@@ -26,7 +26,7 @@ class WavlmModel(nn.Module):
             self.freeze_fm()
         if params.freeze_extractor:
             self.freeze_feat_extractor()
-        if params.output.layer_norm:
+        if params.output_layer_norm:
             self.output_layer_norm = nn.LayerNorm(self.wavlm.config.output_hidden_size)
         self.linear = nn.Linear(self.wavlm.config.output_hidden_size, vocab_size)
         self.dropout = nn.Dropout(params.logit_dropout_p)

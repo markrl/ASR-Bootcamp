@@ -27,7 +27,7 @@ def main():
     data_module = AsrDataModule(params)
     vocab_size = max([data_module.vocab_size, params.vocab_size])
     # module = WavlmModule(params, vocab_size, data_module.tokenizer)
-    module = WavlmModule.load_from_checkpoint('checkpoints/finetune_epoch60_augment_epoch60_tim100_freq40_wer.0910/best.ckpt',
+    module = WavlmModule.load_from_checkpoint('checkpoints/finetune_epoch60_layerweights_wer.0948/best.ckpt',
                                               params=params, vocab_size=vocab_size, tokenizer=data_module.tokenizer)
     
     trainer.test(module, data_module)

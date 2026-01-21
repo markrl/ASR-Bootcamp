@@ -10,6 +10,7 @@ from utils.functional import edit_distance
 from wavlm_src.model import WavlmModel
 from utils.tokenizer import Tokenizer
 from utils.processor import AudioProcessor
+from utils.losses import SmoothCtcLoss
 
 from pdb import set_trace
 
@@ -23,7 +24,7 @@ class WavlmModule(LightningModule):
         self.params = params
         self.vocab_size = vocab_size
         self.tokenizer = tokenizer
-        self.criterion = nn.CTCLoss(zero_infinity=True)
+        self.criterion = SmoothCtcLoss(params.smoothing)
         self.val_n_tokens = 0
         self.val_edit_dist = 0
         self.test_n_tokens = 0
@@ -106,6 +107,8 @@ class WavlmModule(LightningModule):
         Y_flat = torch.cat([yy[:yy_lens] for yy,yy_lens in zip(Y,Y_lens)])
         Y_hat,Y_hat_lens = self.model(X)
         loss = self.criterion(Y_hat.permute(1,0,2), Y_flat, Y_hat_lens, Y_lens)
+        if torch.any(torch.isnan(loss)):
+            set_trace()
         self.log('test/loss', loss.item(), on_step=False, sync_dist=True, 
                  batch_size=self.params.batch_size, on_epoch=True)
         for ii in range(Y_hat.shape[0]):
@@ -125,7 +128,7 @@ class WavlmModule(LightningModule):
 
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.parameters(), self.params.lr,
-                            weight_decay=self.params.wd)
+                            weight_decay=self.params.wd, eps=1e-10)
         scheduler = torch.optim.lr_scheduler.MultiStepLR(
             opt,
             milestones=[self.params.finetune_epoch],

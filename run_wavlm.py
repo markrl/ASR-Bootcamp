@@ -11,6 +11,10 @@ from utils.dataset import AsrDataModule
 def main():
     # Get parameters
     params = get_params()
+
+    # Adjust parameters
+    if params.smoothing>0:
+        params.batch_size -= 16
     
     # Random seed for reproducibility
     seed_everything(params.seed, workers=True)

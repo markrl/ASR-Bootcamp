@@ -6,6 +6,31 @@ from argparse import Namespace
 from pdb import set_trace
 
 
+class SmoothCtcLoss(nn.Module):
+    def __init__(self, 
+                 weight: float) -> None:
+        super().__init__()
+        self.weight = weight
+        self.ctc = nn.CTCLoss(zero_infinity=True)
+        self.kldiv = nn.KLDivLoss(reduction='batchmean')
+
+    def forward(self, 
+                x: torch.Tensor, 
+                y_flat: torch.Tensor, 
+                x_lens: torch.Tensor, 
+                y_lens: torch.Tensor):
+        ctc_loss = self.ctc(x, y_flat, x_lens, y_lens)
+        if self.weight == 0.0:
+            return ctc_loss
+
+        n_classes = x.shape[-1]
+        x = x.contiguous().view(-1, n_classes)
+        uniform_target = torch.full_like(x, 1.0 / n_classes)
+        kl_loss = self.kldiv(x, uniform_target)
+
+        return self.weight*kl_loss + (1-self.weight)*ctc_loss
+
+
 class RnntLoss(nn.Module):
     def __init__(self,
                  blank_idx: int = 0,

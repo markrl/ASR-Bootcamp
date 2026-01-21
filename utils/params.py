@@ -88,6 +88,9 @@ def get_params():
                         help='number of frequency channels to mask with specaugment')
     parser.add_argument('--time_mask_param', type=int, default=80,
                         help='number of time frames to mask with specaugment')
+
+    parser.add_argument('--model_type', type=str, default='baseline',
+                        help='type of asr model')
     
 
     return parser.parse_args()

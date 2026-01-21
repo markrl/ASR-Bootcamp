@@ -92,7 +92,7 @@ def get_params():
     # Model arguments
     parser.add_argument('--model_type', type=str, default='ctc',
                         help='general model classification; `ctc`, `rnnt`, `aed`, `llm`')
-    parser.add_argument('--logit_dropout_p', type=float, default=0.1,
+    parser.add_argument('--logit_dropout_p', type=float, default=0.0,
                         help='probability of dropout for the logits')
     parser.add_argument('--freeze_fm', default=False, action='store_true',
                         help='freeze the wavlm model')
@@ -102,5 +102,7 @@ def get_params():
                         help='use a weighted combination of WavLM layer output rather than final layer')
     parser.add_argument('--output_layer_norm', default=False, action='store_true',
                         help='apply layer norm before the final linear layer')
+    parser.add_argument('--smoothing', type=float, default=0.0,
+                        help='label smoothing kl divergence weight')
 
     return parser.parse_args()
