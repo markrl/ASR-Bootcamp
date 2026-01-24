@@ -39,7 +39,9 @@ def get_params():
     parser.add_argument('--finetune_epoch', type=int, default=50,
                         help='epoch to start fine tuning end-to-end')
     parser.add_argument('--finetune_lr_mult', type=float, default=0.01,
-                        help='factor to multiply learning rate by when starting fine tuning')                    
+                        help='factor to multiply learning rate by when starting fine tuning')
+    parser.add_argument('--use_eos_token', default=False, action='store_true',
+                        help='use the end of sequence token')
     
     # Data arguments
     parser.add_argument('--text_encoding', type=str, default='onehot',
@@ -62,6 +64,8 @@ def get_params():
                         help='percentage of the training data to use per epoch')
     parser.add_argument('--limit_val_batches', type=float, default=0.5,
                         help='percentage of the validation data to use per epoch')
+    parser.add_argument('--pad_signal_dur', type=int, default=50,
+                        help='duration of silence to add before and after the signal in milliseconds')
 
     # Audio processing arguments
     parser.add_argument('--normalization_fn', type=str, default=None,
@@ -88,6 +92,8 @@ def get_params():
                         help='number of frequency channels to mask with specaugment')
     parser.add_argument('--time_mask_param', type=int, default=80,
                         help='number of time frames to mask with specaugment')
+    parser.add_argument('--max_shift_dur', type=int, default=200,
+                        help='maximum duration of random silence to add to the beginning of the signal')
 
     parser.add_argument('--model_type', type=str, default='baseline',
                         help='type of asr model')

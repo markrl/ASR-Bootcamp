@@ -89,6 +89,9 @@ class WavlmModule(LightningModule):
                 targ_seq = Y[ii,:Y_lens[ii]]
                 self.val_edit_dist += edit_distance(targ_seq, pred_seq)
                 self.val_n_tokens += Y_lens[ii]
+                if batch_idx%50==0 and ii==0:
+                    print(f'TARGET: "{self.tokenizer.decode(targ_seq)}"')
+                    print(f'PREDICTED: "{self.tokenizer.decode(pred_seq)}"')
         return loss
 
     def on_validation_epoch_end(self):
@@ -117,6 +120,9 @@ class WavlmModule(LightningModule):
             targ_seq = Y[ii,:Y_lens[ii]]
             self.test_edit_dist += edit_distance(targ_seq, pred_seq)
             self.test_n_tokens += Y_lens[ii]
+            if batch_idx%50==0 and ii==0:
+                print(f'TARGET: "{self.tokenizer.decode(targ_seq)}"')
+                print(f'PREDICTED: "{self.tokenizer.decode(pred_seq)}"')
         return loss
 
     def on_test_epoch_end(self):

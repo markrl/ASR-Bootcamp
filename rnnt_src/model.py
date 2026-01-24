@@ -11,73 +11,6 @@ from argparse import Namespace
 from pdb import set_trace
 
 
-class RnntModel(nn.Module):
-    def __init__(self, 
-                 params: Namespace,
-                 vocab_size: int,
-                 blank_idx: int=0,
-                 sos_idx: int=1,
-                 max_out_len: int=50
-                 ) -> None:
-        super().__init__()
-        self.params = params
-        self.processor = AudioProcessor(params)
-        self.transcriber = RnntTranscriber(params)
-        self.predictor = RnntPredictor(params, vocab_size)
-        self.joiner = RnntJoiner(params, vocab_size)
-        self.blank_idx = blank_idx
-        self.sos_idx = sos_idx
-        self.max_out_len = max_out_len
-
-    def forward(self, 
-                x: PackedSequence, 
-                y: torch.Tensor, 
-                state: torch.Tensor=None
-                ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        x, x_lens = pad_packed_sequence(x, batch_first=True)
-        x, x_lens = self.processor(x, x_lens)
-        x, x_lens, transcriber_state = self.transcriber(x, x_lens)
-        y, predictor_state = self.predictor(y, state)
-        h = self.joiner(x, y)
-        return h, x_lens
-
-    def greedy_search(self, 
-                      x: torch.Tensor
-                      ) -> torch.Tensor:
-        x, x_lens, transcriber_state = self.transcribe(x)
-        batch_size = x.shape[0]
-        output = []
-        for b in range(batch_size):
-            t = 0
-            u = 0
-            y_hat = [self.sos_idx]
-            predictor_state = None
-            while t < x_lens[b] and u < self.max_out_len:
-                predictor_input = torch.tensor([y_hat[-1]], device=x.device)
-                g_u, predictor_state = self.predict(predictor_input, predictor_state)
-                f_t = x[b,t]
-                h = self.joiner(f_t, x_lens[b])
-                idx = h.max(-1)[1].item()
-                if idx==self.blank_idx:
-                    t += 1
-                else:
-                    u += 1
-                    y_hat.append(idx)
-            output.append(torch.Tensor(y_hat[1:]))
-        return output
-
-    def transcribe(self, 
-                   x: PackedSequence
-                   ) -> Tuple[torch.Tensor, torch.Tensor]:
-        x, x_lens = pad_packed_sequence(x, batch_first=True)
-        return self.transcriber(x, x_lens)
-
-    def predict(self,
-                y: torch.Tensor,
-                state: torch.Tensor):
-        return self.predictor.step(y, state)
-
-
 class CnnFeatureExtractor(nn.Module):
     def __init__(self,
                  params: Namespace
@@ -122,10 +55,14 @@ class TimeDownsampler(nn.Module):
 
 class RnntTranscriber(nn.Module):
     def __init__(self,
-                 params: Namespace
+                 params: Namespace,
+                 vocab_size: int=None,
+                 individual: bool=False
                  ) -> None:
         super().__init__()
         self.params = params
+        self.individual = individual
+        self.processor = AudioProcessor(params)
         if params.cnn_feat_extractor:
             self.cnn_feat_extractor = CnnFeatureExtractor(params)
         self.input_layer_norm = nn.LayerNorm(params.n_mels)
@@ -146,12 +83,17 @@ class RnntTranscriber(nn.Module):
         elif params.transcriber_type=='mamba':
             raise NotImplementedError
         self.linear = nn.Linear(params.transcriber_s2s_out_dim, params.joiner_in_dim)
+        self.act_out = nn.ReLU()
+        if individual:
+            self.vocab_project = nn.Linear(params.joiner_in_dim, vocab_size)
+            self.smax = nn.LogSoftmax(dim=-1)
 
     def forward(self, 
-                x: torch.Tensor, 
-                x_lens: torch.Tensor,
+                x: PackedSequence,
                 state: torch.Tensor=None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
+        x, x_lens = pad_packed_sequence(x, batch_first=True)
+        x, x_lens = self.processor(x, x_lens)
         if self.params.cnn_feat_extractor:
             x, x_lens = self.cnn_feat_extractor(x, x_lens)
         if self.params.downsample_time_factor > 0:
@@ -159,15 +101,22 @@ class RnntTranscriber(nn.Module):
         x = self.input_layer_norm(x)
         x, state = self.s2s_model(x, state)
         x = self.linear(x)
+        x = self.act_out(x)
+        if self.individual:
+            x = self.vocab_project(x)
+            x = self.smax(x)
         return x, x_lens, state
+
 
 class RnntPredictor(nn.Module):
     def __init__(self,
                  params: Namespace,
-                 vocab_size: int
+                 vocab_size: int,
+                 individual: bool=False
                  ) -> None:
         super().__init__()
         self.params = params
+        self.individual = individual
         self.embedding = nn.Embedding(vocab_size, params.embedding_dim)
         self.input_layer_norm = nn.LayerNorm(params.embedding_dim)
         if params.predictor_type=='gru':
@@ -187,6 +136,8 @@ class RnntPredictor(nn.Module):
         self.linear_out = nn.Linear(params.predictor_s2s_out_dim, params.joiner_in_dim)
         self.output_layer_norm = nn.LayerNorm(params.joiner_in_dim)
         self.dropout = nn.Dropout(params.predictor_out_dropout_p)
+        if individual:
+            self.vocab_project = nn.Linear(params.joiner_in_dim, vocab_size)
 
     def forward(self, 
                 y: torch.Tensor, 
@@ -194,20 +145,23 @@ class RnntPredictor(nn.Module):
                 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         y = self.embedding(y)
         y = self.input_layer_norm(y)
-        y, state = self.s2s_model(y, state)[:2]
+        y, state = self.s2s_model(y, state)
         y = self.linear_out(y)
         y = self.output_layer_norm(y)
         y = self.dropout(y)
+        if self.individual:
+            y = self.vocab_project(y)
         return y, state
 
     def step(self,
              y: torch.Tensor,
              state: torch.Tensor
              ) -> Tuple[torch.Tensor, torch.Tensor]:
+        y = self.embedding(y)
         y = self.input_layer_norm(y)
         state = self.s2s_model(y, state)[1]
         out = self.linear_out(state)
-        out = self.output_layer_norm(y)
+        out = self.output_layer_norm(out)
         return out, state
 
 
@@ -218,15 +172,89 @@ class RnntJoiner(nn.Module):
                  ) -> None:
         super().__init__()
         self.linear = nn.Linear(params.joiner_in_dim, vocab_size)
-        self.activation = nn.ReLU()
-        self.softmax = nn.Softmax(dim=-1)
+        self.relu = nn.ReLU()
 
     def forward(self,
                 x: torch.Tensor, 
                 y: torch.Tensor, 
                 ) -> torch.Tensor:
         h = x.unsqueeze(2).contiguous() + y.unsqueeze(1).contiguous()
-        h = self.activation(h)
+        h = self.relu(h)
         h = self.linear(h)
-        h = self.softmax(h)
         return h
+
+
+class RnntModel(nn.Module):
+    def __init__(self, 
+                 params: Namespace,
+                 vocab_size: int,
+                 blank_idx: int=0,
+                 sos_idx: int=1,
+                 eos_idx: int=2,
+                 transcriber: RnntTranscriber=None,
+                 predictor: RnntPredictor=None,
+                 max_out_len: int=50
+                 ) -> None:
+        super().__init__()
+        self.params = params
+        if transcriber is None:
+            self.transcriber = RnntTranscriber(params)
+        else:
+            self.transcriber = transcriber
+            self.transcriber.individual = False
+        if predictor is None:
+            self.predictor = RnntPredictor(params, vocab_size)
+        else:
+            self.predictor = predictor
+            self.predictor.individual = False
+        self.joiner = RnntJoiner(params, vocab_size)
+        self.blank_idx = blank_idx
+        self.sos_idx = sos_idx
+        self.eos_idx = eos_idx
+        self.max_out_len = max_out_len
+
+    def forward(self, 
+                x: PackedSequence, 
+                y: torch.Tensor, 
+                state: torch.Tensor=None
+                ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        x, x_lens, transcriber_state = self.transcriber(x)
+        y, predictor_state = self.predictor(y, state)
+        h = self.joiner(x, y)
+        return h, x_lens
+
+    def greedy_search(self, 
+                      x: torch.Tensor
+                      ) -> torch.Tensor:
+        x, x_lens, transcriber_state = self.transcribe(x)
+        batch_size = x.shape[0]
+        output = []
+        for b in range(batch_size):
+            t = 0
+            u = 0
+            y_hat = [self.sos_idx]
+            predictor_state = None
+            while t < x_lens[b] and u < self.max_out_len:
+                predictor_input = torch.tensor([y_hat[-1]], device=x.device)
+                g_u, predictor_state = self.predict(predictor_input, predictor_state)
+                f_t = x[b,t]
+                h = self.joiner(f_t.unsqueeze(0).unsqueeze(0), g_u.unsqueeze(0))
+                idx = h.max(-1)[1].item()
+                if idx==self.blank_idx:
+                    t += 1
+                else:
+                    u += 1
+                    y_hat.append(idx)
+            y_hat.append(self.eos_idx)
+            output.append(torch.Tensor(y_hat).long())
+        return output
+
+    def transcribe(self, 
+                   x: PackedSequence
+                   ) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self.transcriber(x)
+
+    def predict(self,
+                y: torch.Tensor,
+                state: torch.Tensor):
+        return self.predictor.step(y, state)

@@ -5,16 +5,74 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.strategies import ModelParallelStrategy
 
 from rnnt_src.params import get_params
-from rnnt_src.module import RnntModule
+from rnnt_src.module import RnntModule, AmModule, LmModule
 from utils.dataset import AsrDataModule
 
 def main():
     # Get parameters
     params = get_params()
+    original_batch_size = params.batch_size
     
     # Random seed for reproducibility
     seed_everything(params.seed, workers=True)
     torch.set_float32_matmul_precision('medium')
+
+    # Define data
+    data_module = AsrDataModule(params)
+    vocab_size = max([data_module.vocab_size, params.vocab_size])
+
+    # Train components separately, if indicated
+    if params.pretrain_am_epochs > 0:
+        trainer = Trainer(
+            fast_dev_run=params.debug,
+            accelerator='gpu',
+            devices=params.gpus,
+            overfit_batches=params.overfit_batches if params.overfit_batches<1 else int(params.overfit_batches),
+            limit_train_batches=params.limit_train_batches,
+            limit_val_batches=params.limit_val_batches,
+            max_epochs=params.pretrain_am_epochs,
+            check_val_every_n_epoch=1,
+            logger=False,
+            log_every_n_steps=1,
+            num_sanity_val_steps=1,
+            # precision='bf16-mixed',
+            reload_dataloaders_every_n_epochs=1,)
+
+        module = AmModule(params, vocab_size, data_module.tokenizer)
+        data_module.params.batch_size = 64
+        print()
+        print('*Training audio model*')
+        trainer.fit(module, data_module)
+        transcriber = module.model
+    else:
+        transcriber = None
+
+    if params.pretrain_lm_epochs > 0:
+        trainer = Trainer(
+            fast_dev_run=params.debug,
+            accelerator='gpu',
+            devices=params.gpus,
+            overfit_batches=params.overfit_batches if params.overfit_batches<1 else int(params.overfit_batches),
+            limit_train_batches=params.limit_train_batches,
+            limit_val_batches=params.limit_val_batches,
+            max_epochs=params.pretrain_lm_epochs,
+            check_val_every_n_epoch=1,
+            logger=False,
+            log_every_n_steps=1,
+            num_sanity_val_steps=1,
+            # precision='bf16-mixed',
+            reload_dataloaders_every_n_epochs=1,
+            gradient_clip_val=5.0
+            )
+
+        module = LmModule(params, vocab_size, data_module.tokenizer)
+        data_module.params.batch_size = 256
+        print()
+        print('*Training language model*')
+        trainer.fit(module, data_module)
+        predictor = module.model
+    else:
+        predictor = None
 
     # Define callbacks
     callbacks = []
@@ -58,16 +116,16 @@ def main():
             logger=False,
             log_every_n_steps=1,
             num_sanity_val_steps=1,
-            precision='bf16-mixed',
+            # precision='bf16-mixed',
             reload_dataloaders_every_n_epochs=1,
             strategy=strategy
         )
 
-    # Define model and data
-    data_module = AsrDataModule(params)
-    vocab_size = max([data_module.vocab_size, params.vocab_size])
-    module = RnntModule(params, vocab_size, data_module.tokenizer)
-    
+    # Define model
+    module = RnntModule(params, vocab_size, data_module.tokenizer, transcriber, predictor)
+    data_module.params.batch_size = original_batch_size
+    print()
+    print('*Training RNN-T*')
     trainer.fit(module, data_module)
     trainer.test(module, data_module, ckpt_path='best')
 

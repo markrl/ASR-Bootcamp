@@ -36,6 +36,7 @@ class AudioProcessor(nn.Module):
         self.augment = False
         self.time_mask = T.TimeMasking(time_mask_param=params.time_mask_param)
         self.freq_mask = T.FrequencyMasking(freq_mask_param=params.freq_mask_param)
+        self.random_shift = int(params.max_shift_dur*params.dataset_fs/1000)
 
     def _get_new_lens(self, 
                       x_lens: torch.Tensor
@@ -51,6 +52,11 @@ class AudioProcessor(nn.Module):
             x = self.resample(x)
         if self.preemphasis is not None:
             x = self.Preemphasis(x)
+
+        if self.random_shift > 0 and self.training:
+            random_shift = torch.randint(self.random_shift, (1,)).item()
+            x = torch.cat((torch.zeros(x.shape[0], random_shift).to(x.device), x), dim=-1)
+            x_lens += random_shift
 
         if self.params.center or self.params.normalization_fn is not None:
             x = x.T
@@ -72,7 +78,7 @@ class AudioProcessor(nn.Module):
             x = x.T
 
         if self.input_feature_type == 'waveform':
-            if self.augment and self.training:
+            if self.augment and self.training and torch.rand(1).item()<self.params.p_augment:
                 # Spec -> augment -> Wav
                 spec = self.stft(x)
                 mask = torch.ones(spec.shape).to(spec.device)
@@ -82,7 +88,7 @@ class AudioProcessor(nn.Module):
                 x = self.istft(spec)
         elif self.input_feature_type == 'melspec':
             x = torch.abs(self.stft(x))**2
-            if self.augment and self.training:
+            if self.augment and self.training and torch.rand(1).item()<self.params.p_augment:
                 # Spec -> augment -> Melspec
                 x = self.time_mask(x)
                 x = self.freq_mask(x)
@@ -91,7 +97,7 @@ class AudioProcessor(nn.Module):
             x_lens = self._get_new_lens(x_lens)
         elif self.input_feature_type == 'spec': # *complex* spectrogram
             x = self.stft(x)
-            if self.augment and self.training:
+            if self.augment and self.training and torch.rand(1).item()<self.params.p_augment:
                 # Spec -> augment
                 mask = torch.ones(spec.shape).to(spec.device)
                 mask = self.time_mask(mask)
@@ -101,7 +107,7 @@ class AudioProcessor(nn.Module):
             x_lens = self._get_new_lens(x_lens)
         elif self.input_feature_type == 'powerspec':
             x = self.stft(x)**2
-            if self.augment and self.training:
+            if self.augment and self.training and torch.rand(1).item()<self.params.p_augment:
                 # Spec -> augment
                 x = self.time_mask(x)
                 x = self.freq_mask(x)

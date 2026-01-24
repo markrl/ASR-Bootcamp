@@ -110,7 +110,16 @@ class Tokenizer(nn.Module):
             idxs = torch.argmax(encoding, dim=-1)
         else:
             idxs = encoding
-        tokens = [self.text_map[idx.item()] for idx in idxs if self.text_map[idx.item()]!=self.special_tokens['blank']]
+        tokens = []
+        for idx in idxs:
+            token = self.text_map[idx.item()]
+            if token==self.special_tokens['blank'] or token==self.special_tokens['start']:
+                continue
+            elif token==self.special_tokens['end']:
+                break
+            else:
+                tokens.append(self.text_map[idx.item()])
+        # tokens = [self.text_map[idx.item()] for idx in idxs if self.text_map[idx.item()]!=self.special_tokens['blank']]
         if self.token_type=='word':
             output = ' '.join(tokens)
         elif self.token_type=='character':

@@ -39,7 +39,13 @@ def get_params():
     parser.add_argument('--finetune_epoch', type=int, default=50,
                         help='epoch to start fine tuning end-to-end')
     parser.add_argument('--finetune_lr_mult', type=float, default=0.01,
-                        help='factor to multiply learning rate by when starting fine tuning')                    
+                        help='factor to multiply learning rate by when starting fine tuning')
+    parser.add_argument('--pretrain_lm_epochs', type=int, default=0,
+                        help='number of epochs to pretrain the language model before joint training')
+    parser.add_argument('--pretrain_am_epochs', type=int, default=0,
+                        help='number of epochs to pretrain the audio model before joint training')
+    parser.add_argument('--use_eos_token', default=False, action='store_true',
+                        help='use the end of sequence token')
     
     # Data arguments
     parser.add_argument('--text_encoding', type=str, default='onehot',
@@ -62,6 +68,8 @@ def get_params():
                         help='percentage of the training data to use per epoch')
     parser.add_argument('--limit_val_batches', type=float, default=0.5,
                         help='percentage of the validation data to use per epoch')
+    parser.add_argument('--pad_signal_dur', type=int, default=50,
+                        help='duration of silence to add before and after the signal in milliseconds')
 
     # Audio processing arguments
     parser.add_argument('--normalization_fn', type=str, default=None,
@@ -80,9 +88,9 @@ def get_params():
                         help='add interfering noise for data augmentation')
     parser.add_argument('--add_reverb', default=False, action='store_true',
                         help='add reverberation for data augmentation')
-    parser.add_argument('--n_fft', type=int, default=400,
+    parser.add_argument('--n_fft', type=int, default=512,
                         help='fft length for stft')
-    parser.add_argument('--n_mels', type=int, default=128,
+    parser.add_argument('--n_mels', type=int, default=80,
                         help='number of mel filterbanks')
     parser.add_argument('--freq_mask_param', type=int, default=30,
                         help='number of frequency channels to mask with specaugment')
@@ -90,6 +98,8 @@ def get_params():
                         help='number of time frames to mask with specaugment')
     parser.add_argument('--cnn_feat_extractor', default=False, action='store_true',
                         help='toggle to use a cnn-based feature extractor')
+    parser.add_argument('--max_shift_dur', type=int, default=200,
+                        help='maximum duration of random silence to add to the beginning of the signal')
 
     # Model arguments
     parser.add_argument('--model_type', type=str, default='rnnt',
@@ -102,13 +112,13 @@ def get_params():
                         help='the backbone s2s model of the transcriber')
     parser.add_argument('--n_transcriber_layers', type=int, default=2,
                         help='number of layers in the transcriber network')
-    parser.add_argument('--transcriber_s2s_out_dim', type=int, default=128,
+    parser.add_argument('--transcriber_s2s_out_dim', type=int, default=256,
                         help='hidden dimension of the transcriber sequence-to-sequence component')
-    parser.add_argument('--predictor_s2s_out_dim', type=int, default=128,
+    parser.add_argument('--predictor_s2s_out_dim', type=int, default=256,
                         help='hidden dimension of the predictor sequence-to-sequence component')
     parser.add_argument('--joiner_in_dim', type=int, default=128,
                         help='joiner input dimension')
-    parser.add_argument('--embedding_dim', type=int, default=512,
+    parser.add_argument('--embedding_dim', type=int, default=256,
                         help='text embedding dimension')
     parser.add_argument('--transcriber_s2s_dropout_p', type=float, default=0.0,
                         help='dropout rate for transcriber sequence-to-sequence component output')
@@ -120,6 +130,8 @@ def get_params():
                         help='use a bidirectional transcriber')
     parser.add_argument('--downsample_time_factor', type=int, default=0,
                         help='how much to downsample the time dimension')
+    parser.add_argument('--smoothing', type=float, default=0.0,
+                        help='label smoothing kl divergence weight')
     
 
     return parser.parse_args()

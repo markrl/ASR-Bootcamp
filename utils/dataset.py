@@ -30,12 +30,12 @@ class AsrDataModule(LightningDataModule):
                            '/data/cv-corpus-23.0-2025-09-05/en/dev_short.tsv'],
                           params.dictionary_dir,
                           params.min_occurrences,
-                          params.model_type=='aed',
-                          params.model_type=='aed')
+                          params.model_type!='ctc',
+                          params.use_eos_token)
         self.tokenizer = Tokenizer(params.dictionary_dir,
                                    params.unit_type,
-                                   params.model_type=='aed',
-                                   params.model_type=='aed',
+                                   params.model_type!='ctc',
+                                   params.use_eos_token,
                                    not params.keep_punctuation)
         self.vocab_size = len(self.tokenizer.dictionary)
     
@@ -96,6 +96,7 @@ class AsrData(Dataset):
         self.tsv_path = os.path.join(params.data_root, f'{fold}_short.tsv')
         self.length = len(open(self.tsv_path, 'r').readlines())-1
         self.clips_dir = os.path.join(params.data_root, 'clips_16k')
+        self.pad_signal_samples = int(params.pad_signal_dur*params.dataset_fs/1000)
 
     def __len__(self) -> int:
         return self.length
@@ -109,6 +110,8 @@ class AsrData(Dataset):
         sentence = line[3]
         x,fs = sf.read(os.path.join(self.clips_dir, filepath))
         x = torch.from_numpy(x).float()
+        if self.pad_signal_samples > 0:
+            x = torch.cat((torch.zeros(self.pad_signal_samples), x, torch.zeros(self.pad_signal_samples)))
         y = self.tokenizer(sentence)
         return x,y,fs
 
