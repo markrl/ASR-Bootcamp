@@ -14,7 +14,7 @@ def main():
 
     # Adjust parameters
     if params.smoothing>0:
-        params.batch_size -= 16
+        params.batch_size -= 20
     
     # Random seed for reproducibility
     seed_everything(params.seed, workers=True)

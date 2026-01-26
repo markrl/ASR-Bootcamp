@@ -42,6 +42,8 @@ def get_params():
                         help='factor to multiply learning rate by when starting fine tuning')
     parser.add_argument('--use_eos_token', default=False, action='store_true',
                         help='use the end of sequence token')
+    parser.add_argument('--llrd_factor', type=float, default=0.8,
+                        help='layer-wise learning rate decay factor')
     
     # Data arguments
     parser.add_argument('--text_encoding', type=str, default='onehot',

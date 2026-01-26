@@ -133,8 +133,12 @@ class WavlmModule(LightningModule):
         test_n_tokens = 0
 
     def configure_optimizers(self):
-        opt = torch.optim.Adam(self.parameters(), self.params.lr,
-                            weight_decay=self.params.wd, eps=1e-10)
+        if self.params.llrd_factor < 1:
+            params = self.get_optimizer_params()
+            opt = torch.optim.AdamW(params)
+        else:
+            opt = torch.optim.Adam(self.parameters(), self.params.lr,
+                                weight_decay=self.params.wd, eps=1e-10)
         scheduler = torch.optim.lr_scheduler.MultiStepLR(
             opt,
             milestones=[self.params.finetune_epoch],
@@ -144,3 +148,34 @@ class WavlmModule(LightningModule):
             'optimizer': opt,
             'lr_scheduler': scheduler
         }
+
+    def get_optimizer_params(self):
+        num_layers = self.model.wavlm.config.num_hidden_layers
+        
+        parameter_groups = []
+        
+        parameter_groups.append({
+            "params": [p for p in self.model.linear.parameters()],
+            "lr": self.params.lr,
+            "weight_decay": self.params.wd,
+            "eps": 1e-10
+        })
+
+        for i in range(num_layers - 1, -1, -1):
+            layer_lr = self.params.lr * (self.params.llrd_factor ** (num_layers - i))
+            parameter_groups.append({
+                "params": [p for p in self.model.wavlm.encoder.layers[i].parameters()],
+                "lr": layer_lr,
+                "weight_decay": self.params.wd,
+                "eps": 1e-10
+            })
+
+        feature_lr = self.params.lr * (self.params.llrd_factor ** (num_layers + 1))
+        parameter_groups.append({
+            "params": [p for p in self.model.wavlm.feature_extractor.parameters()],
+            "lr": feature_lr,
+            "weight_decay": self.params.wd,
+            "eps": 1e-10
+        })
+        
+        return parameter_groups

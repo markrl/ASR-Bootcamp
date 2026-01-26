@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.nn.utils.rnn import PackedSequence, pad_packed_sequence
 from lightning.pytorch import LightningModule
 
-from k2 import rnnt_loss
+import k2
 
 from utils.functional import edit_distance
 from rnnt_src.model import RnntModel, RnntPredictor, RnntTranscriber
@@ -39,7 +39,7 @@ class RnntModule(LightningModule):
     def configure_model(self):
         blank_idx = self.tokenizer.dictionary['<blank>']
         sos_idx = self.tokenizer.dictionary['<sos>']
-        eos_idx = self.tokenizer.dictionary['<eos>']
+        eos_idx = self.tokenizer.dictionary['<eos>'] if self.params.use_eos_token else blank_idx
         self.model = RnntModel(self.params, 
                                self.vocab_size, 
                                blank_idx, 
@@ -60,8 +60,37 @@ class RnntModule(LightningModule):
         X,Y,fs = batch
         Y,Y_lens = pad_packed_sequence(Y, batch_first=True)
         H,X_lens = self.model(X, Y)
-        boundary = torch.tensor([[0,0,Y_len-2,X_len] for Y_len,X_len in zip(Y_lens,X_lens)])
-        loss = rnnt_loss(H, Y[:,1:], termination_symbol=self.model.eos_idx, boundary=boundary.to(H.device))
+        # am_out, X_lens, _ = self.model.transcriber(X)
+        # lm_out, _ = self.model.predictor(Y, None)
+        boundary = torch.tensor([[0,0,Y_len-2,X_len] for Y_len,X_len in zip(Y_lens,X_lens)]).to(Y.device)
+        loss = k2.rnnt_loss(H, Y[:,1:], termination_symbol=self.model.eos_idx, boundary=boundary.to(Y.device))
+        # simple_loss, (px_grad, py_grad) = k2.rnnt_loss_simple(
+        #     lm=lm_out,
+        #     am=am_out,
+        #     symbols=Y[:,1:],
+        #     termination_symbol=self.model.eos_idx,
+        #     boundary=boundary,
+        #     reduction='mean',
+        #     return_grad=True
+        # )
+        # ranges = k2.get_rnnt_prune_ranges(
+        #     px_grad=px_grad,
+        #     py_grad=py_grad,
+        #     boundary=boundary,
+        #     s_range=5
+        # )
+        # pruned_am, pruned_lm = k2.do_rnnt_pruning(
+        #     am=am_out, lm=lm_out, ranges=ranges
+        # )
+        # logits = nn.functional.relu(pruned_am + pruned_lm)
+        # loss = k2.rnnt_loss_pruned(
+        #     logits=logits,
+        #     symbols=Y[:,1:],
+        #     ranges=ranges,
+        #     termination_symbol=self.model.eos_idx,
+        #     boundary=boundary,
+        #     reduction="mean",
+        # )
         self.log('train/loss', loss.item(), on_step=True, sync_dist=True,
                  batch_size=self.params.batch_size, prog_bar=True)
         if self.params.train_wer:
@@ -69,8 +98,8 @@ class RnntModule(LightningModule):
             with torch.no_grad():
                 pred_seqs = self.model.greedy_search(X)
             for ii in range(len(pred_seqs)):
-                pred_seq = pred_seqs[ii]
-                targ_seq = Y[ii,:Y_lens[ii]]
+                pred_seq = self.tokenizer.remove_special(pred_seqs[ii])
+                targ_seq = self.tokenizer.remove_special(Y[ii,:Y_lens[ii]])
                 edit_dist += edit_distance(targ_seq, pred_seq)
                 n_tokens += Y_lens[ii]
                 if batch_idx%100==0 and ii==0:
@@ -87,15 +116,45 @@ class RnntModule(LightningModule):
         X,Y,fs = batch
         Y,Y_lens = pad_packed_sequence(Y, batch_first=True)
         H,X_lens = self.model(X, Y)
-        boundary = torch.tensor([[0,0,Y_len-2,X_len] for Y_len,X_len in zip(Y_lens,X_lens)])
-        loss = rnnt_loss(H, Y[:,1:], termination_symbol=self.model.eos_idx, boundary=boundary.to(H.device))
+        # am_out, X_lens, _ = self.model.transcriber(X)
+        # lm_out, _ = self.model.predictor(Y, None)
+        boundary = torch.tensor([[0,0,Y_len-2,X_len] for Y_len,X_len in zip(Y_lens,X_lens)]).to(Y.device)
+        loss = k2.rnnt_loss(H, Y[:,1:], termination_symbol=self.model.eos_idx, boundary=boundary.to(Y.device))
+        # simple_loss, (px_grad, py_grad) = k2.rnnt_loss_simple(
+        #     lm=lm_out,
+        #     am=am_out,
+        #     symbols=Y[:,1:],
+        #     termination_symbol=self.model.eos_idx,
+        #     boundary=boundary,
+        #     reduction='mean',
+        #     return_grad=True
+        # )
+        # ranges = k2.get_rnnt_prune_ranges(
+        #     px_grad=px_grad,
+        #     py_grad=py_grad,
+        #     boundary=boundary,
+        #     s_range=5
+        # )
+        # pruned_am, pruned_lm = k2.do_rnnt_pruning(
+        #     am=am_out, lm=lm_out, ranges=ranges
+        # )
+        # logits = nn.functional.relu(pruned_am + pruned_lm)
+        # loss = k2.rnnt_loss_pruned(
+        #     logits=logits,
+        #     symbols=Y[:,1:],
+        #     ranges=ranges,
+        #     termination_symbol=self.model.eos_idx,
+        #     boundary=boundary,
+        #     reduction="mean",
+        # )
+
         self.log('val/loss', loss.item(), on_step=False, sync_dist=True,
                  batch_size=self.params.batch_size, on_epoch=True, prog_bar=True)
         if self.params.val_wer:
             pred_seqs = self.model.greedy_search(X)
             for ii in range(len(pred_seqs)):
-                pred_seq = pred_seqs[ii]
-                targ_seq = Y[ii,:Y_lens[ii]]
+                pred_seq = self.tokenizer.remove_special(pred_seqs[ii])
+                targ_seq = self.tokenizer.remove_special(Y[ii,:Y_lens[ii]])
                 self.val_edit_dist += edit_distance(targ_seq, pred_seq)
                 self.val_n_tokens += Y_lens[ii]
                 if batch_idx%50==0 and ii==0:
@@ -117,14 +176,43 @@ class RnntModule(LightningModule):
         X,Y,fs = batch
         Y,Y_lens = pad_packed_sequence(Y, batch_first=True)
         H,X_lens = self.model(X, Y)
-        boundary = torch.tensor([[0,0,Y_len-2,X_len] for Y_len,X_len in zip(Y_lens,X_lens)])
-        loss = rnnt_loss(H, Y[:,1:], termination_symbol=self.model.eos_idx, boundary=boundary.to(H.device))
+        # am_out, X_lens, _ = self.model.transcriber(X)
+        # lm_out, _ = self.model.predictor(Y, None)
+        boundary = torch.tensor([[0,0,Y_len-2,X_len] for Y_len,X_len in zip(Y_lens,X_lens)]).to(Y.device)
+        loss = k2.rnnt_loss(H, Y[:,1:], termination_symbol=self.model.eos_idx, boundary=boundary.to(Y.device))
+        # simple_loss, (px_grad, py_grad) = k2.rnnt_loss_simple(
+        #     lm=lm_out,
+        #     am=am_out,
+        #     symbols=Y[:,1:],
+        #     termination_symbol=self.model.eos_idx,
+        #     boundary=boundary,
+        #     reduction='mean',
+        #     return_grad=True
+        # )
+        # ranges = k2.get_rnnt_prune_ranges(
+        #     px_grad=px_grad,
+        #     py_grad=py_grad,
+        #     boundary=boundary,
+        #     s_range=5
+        # )
+        # pruned_am, pruned_lm = k2.do_rnnt_pruning(
+        #     am=am_out, lm=lm_out, ranges=ranges
+        # )
+        # logits = nn.functional.relu(pruned_am + pruned_lm)
+        # loss = k2.rnnt_loss_pruned(
+        #     logits=logits,
+        #     symbols=Y[:,1:],
+        #     ranges=ranges,
+        #     termination_symbol=self.model.eos_idx,
+        #     boundary=boundary,
+        #     reduction="mean",
+        # )
         self.log('test/loss', loss.item(), on_step=False, sync_dist=True, 
                  batch_size=self.params.batch_size, on_epoch=True)
         pred_seqs = self.model.greedy_search(X)
         for ii in range(len(pred_seqs)):
-            pred_seq = pred_seqs[ii]
-            targ_seq = Y[ii,:Y_lens[ii]]
+            pred_seq = self.tokenizer.remove_special(pred_seqs[ii])
+            targ_seq = self.tokenizer.remove_special(Y[ii,:Y_lens[ii]])
             self.test_edit_dist += edit_distance(targ_seq, pred_seq)
             self.test_n_tokens += Y_lens[ii]
             if batch_idx%50==0 and ii==0:

@@ -39,7 +39,7 @@ def main():
             reload_dataloaders_every_n_epochs=1,)
 
         module = AmModule(params, vocab_size, data_module.tokenizer)
-        data_module.params.batch_size = 64
+        data_module.params.batch_size = 32
         print()
         print('*Training audio model*')
         trainer.fit(module, data_module)
@@ -118,7 +118,8 @@ def main():
             num_sanity_val_steps=1,
             # precision='bf16-mixed',
             reload_dataloaders_every_n_epochs=1,
-            strategy=strategy
+            strategy=strategy,
+            accumulate_grad_batches=7
         )
 
     # Define model

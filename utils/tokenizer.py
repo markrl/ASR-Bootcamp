@@ -126,7 +126,7 @@ class Tokenizer(nn.Module):
             output = ''.join(tokens)
         return output
 
-    def collapse_ctc(self, encoding: torch.Tensor) -> str:
+    def collapse_ctc(self, encoding: torch.Tensor) -> torch.Tensor:
         if len(encoding.shape) > 1:
             idxs = torch.argmax(encoding, dim=-1)
         else:
@@ -138,6 +138,17 @@ class Tokenizer(nn.Module):
                 collapsed.append(idx)
                 prev_idx = idx
         return torch.Tensor([idx for idx in collapsed if self.text_map[idx.item()]!=self.special_tokens['blank']])
+
+    def remove_special(self, encoding: torch.Tensor) -> torch.Tensor:
+        if self.use_sos:
+            encoding = encoding[1:]
+        if self.use_eos:
+            first_eos_idx = torch.where(encoding==self.dictionary[self.special_tokens['end']])[0]
+            if len(first_eos_idx)>1:
+                encoding = encoding[:first_eos_idx[0]]
+            elif len(first_eos_idx)==1:
+                encoding = encoding[:first_eos_idx]
+        return torch.Tensor([idx for idx in encoding if self.text_map[idx.item()]!=self.special_tokens['blank']]).long()
 
 
 if __name__=='__main__':

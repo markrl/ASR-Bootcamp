@@ -198,7 +198,7 @@ class RnntModel(nn.Module):
         super().__init__()
         self.params = params
         if transcriber is None:
-            self.transcriber = RnntTranscriber(params)
+            self.transcriber = RnntTranscriber(params, vocab_size)
         else:
             self.transcriber = transcriber
             self.transcriber.individual = False
@@ -226,7 +226,8 @@ class RnntModel(nn.Module):
     def greedy_search(self, 
                       x: torch.Tensor
                       ) -> torch.Tensor:
-        x, x_lens, transcriber_state = self.transcribe(x)
+        with torch.no_grad():
+            x, x_lens, transcriber_state = self.transcribe(x)
         batch_size = x.shape[0]
         output = []
         for b in range(batch_size):
@@ -235,10 +236,11 @@ class RnntModel(nn.Module):
             y_hat = [self.sos_idx]
             predictor_state = None
             while t < x_lens[b] and u < self.max_out_len:
-                predictor_input = torch.tensor([y_hat[-1]], device=x.device)
-                g_u, predictor_state = self.predict(predictor_input, predictor_state)
-                f_t = x[b,t]
-                h = self.joiner(f_t.unsqueeze(0).unsqueeze(0), g_u.unsqueeze(0))
+                with torch.no_grad():
+                    predictor_input = torch.tensor([y_hat[-1]], device=x.device)
+                    g_u, predictor_state = self.predict(predictor_input, predictor_state)
+                    f_t = x[b,t]
+                    h = self.joiner(f_t.unsqueeze(0).unsqueeze(0), g_u.unsqueeze(0))
                 idx = h.max(-1)[1].item()
                 if idx==self.blank_idx:
                     t += 1
