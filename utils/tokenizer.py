@@ -60,22 +60,13 @@ class Tokenizer(nn.Module):
         for symbol in self.other_replacements:
             text = text.replace(symbol, self.other_replacements[symbol])
         if self.remove_punctuation:
-            for symbol in self.space_symbols:
-                text = text.replace(symbol, ' ' + symbol)
-            for symbol in self.remove_symbols:
-                if symbol=='-':
-                    text = text.replace(symbol, ' ')
-                else:
-                    text = text.replace(symbol, '')
+            for symbol in self.remove_symbols + self.space_symbols:
+                text = text.replace(symbol, ' ')
         else:
             for symbol in self.remove_symbols:
-                if symbol=='-':
-                    text = text.replace(symbol, ' '+symbol+' ')
-                else:
-                    text = text.replace(symbol, ' '+symbol)
+                text = text.replace(symbol, ' '+symbol+' ')
         tokens = self.split_text(text)
-        if "'" in tokens:
-            tokens.remove("'")
+        tokens = [token for token in tokens if token!='' and token!="'"]
         if self.use_sos:
             tokens = [self.special_tokens['start']] + tokens
         if self.use_eos:

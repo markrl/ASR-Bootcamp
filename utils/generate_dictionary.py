@@ -1,6 +1,7 @@
 import os
 import sys
 import pickle
+import string
 from tqdm import tqdm
 
 from utils.tokenizer import Tokenizer
@@ -9,7 +10,7 @@ from pdb import set_trace
 
 def generate_dict(params, input_data_paths, dictionary_dir, min_occurrences=5, use_sos=False, use_eos=False):
     print('\n*Generating dictionary*')
-    tokenizer = Tokenizer(None, params.unit_type, False, not params.keep_punctuation)
+    tokenizer = Tokenizer(None, params.unit_type, False, False, not params.keep_punctuation)
     dictionary = {}
     for path in input_data_paths:
         print(path)

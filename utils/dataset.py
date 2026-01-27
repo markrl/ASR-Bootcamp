@@ -38,6 +38,7 @@ class AsrDataModule(LightningDataModule):
                                    params.use_eos_token,
                                    not params.keep_punctuation)
         self.vocab_size = len(self.tokenizer.dictionary)
+        print(f'Vocab size: {self.vocab_size}')
     
     def setup(self, stage: str = None) -> None:
         if stage == 'fit':

@@ -28,7 +28,7 @@ def main():
         model=model,
         tokenizer=processor.tokenizer,
         feature_extractor=processor.feature_extractor,
-        torch_dtype=torch_dtype,
+        dtype=torch_dtype,
         device=device,
     )
 
