@@ -130,10 +130,16 @@ def get_params():
                         help='dropout rate for predictor output')
     parser.add_argument('--transcriber_bidirectional', default=False, action='store_true',
                         help='use a bidirectional transcriber')
-    parser.add_argument('--downsample_time_factor', type=int, default=0,
+    parser.add_argument('--time_downsample_factor', type=int, default=0,
                         help='how much to downsample the time dimension')
+    parser.add_argument('--cnn_frontend', default=False, action='store_true',
+                        help='use a cnn frontend on the spectral features')
     parser.add_argument('--smoothing', type=float, default=0.0,
                         help='label smoothing kl divergence weight')
+    parser.add_argument('--transcriber_weight', type=float, default=1.0,
+                        help='transcriber output weighting in joiner')
+    parser.add_argument('--predictor_weight', type=float, default=1.0,
+                        help='predictor output weighting in joiner')
     
 
     return parser.parse_args()

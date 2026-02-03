@@ -93,10 +93,6 @@ class Tokenizer(nn.Module):
         return idxs
 
     def decode(self, encoding: torch.Tensor) -> str:
-        if self.use_sos:
-            encoding = encoding[1:]
-        if self.use_eos:
-            encoding = encoding[:-1]
         if len(encoding.shape) > 1:
             idxs = torch.argmax(encoding, dim=-1)
         else:
@@ -110,7 +106,6 @@ class Tokenizer(nn.Module):
                 break
             else:
                 tokens.append(self.text_map[idx.item()])
-        # tokens = [self.text_map[idx.item()] for idx in idxs if self.text_map[idx.item()]!=self.special_tokens['blank']]
         if self.token_type=='word':
             output = ' '.join(tokens)
         elif self.token_type=='character':

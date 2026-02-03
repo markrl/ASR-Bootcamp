@@ -1,12 +1,26 @@
 import os
 import torch
 from lightning.pytorch import Trainer, seed_everything
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateFinder
 from lightning.pytorch.strategies import ModelParallelStrategy
 
 from rnnt_src.params import get_params
 from rnnt_src.module import RnntModule, AmModule, LmModule
 from utils.dataset import AsrDataModule
+
+
+class FineTuneLearningRateFinder(LearningRateFinder):
+    def __init__(self, milestones, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.milestones = milestones
+
+    def on_fit_start(self, *args, **kwargs):
+        return
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        if trainer.current_epoch in self.milestones or trainer.current_epoch == 0:
+            self.lr_find(trainer, pl_module)
+
 
 def main():
     # Get parameters
@@ -24,6 +38,7 @@ def main():
     # Train components separately, if indicated
     if params.pretrain_am_epochs > 0:
         trainer = Trainer(
+            callbacks=[FineTuneLearningRateFinder(milestones=(0,10,20))],
             fast_dev_run=params.debug,
             accelerator='gpu',
             devices=params.gpus,
@@ -35,11 +50,12 @@ def main():
             logger=False,
             log_every_n_steps=1,
             num_sanity_val_steps=1,
-            # precision='bf16-mixed',
-            reload_dataloaders_every_n_epochs=1,)
+            precision='bf16-mixed',
+            reload_dataloaders_every_n_epochs=1,
+            gradient_clip_val=1.0)
 
         module = AmModule(params, vocab_size, data_module.tokenizer)
-        data_module.params.batch_size = 32
+        data_module.params.batch_size = 64
         print()
         print('*Training audio model*')
         trainer.fit(module, data_module)
@@ -60,7 +76,7 @@ def main():
             logger=False,
             log_every_n_steps=1,
             num_sanity_val_steps=1,
-            # precision='bf16-mixed',
+            precision='bf16-mixed',
             reload_dataloaders_every_n_epochs=1,
             gradient_clip_val=5.0
             )
@@ -116,10 +132,11 @@ def main():
             logger=False,
             log_every_n_steps=1,
             num_sanity_val_steps=1,
-            # precision='bf16-mixed',
+            precision='bf16-mixed',
             reload_dataloaders_every_n_epochs=1,
             strategy=strategy,
-            accumulate_grad_batches=7
+            accumulate_grad_batches=15,
+            gradient_clip_val=5.0
         )
 
     # Define model

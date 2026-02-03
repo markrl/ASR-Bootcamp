@@ -11,6 +11,88 @@ from argparse import Namespace
 from pdb import set_trace
 
 
+class ResidualGru(nn.Module):
+    def __init__(self, 
+                 input_dim: int, 
+                 hidden_dim: int, 
+                 n_layers: int, 
+                 dropout: float=0.2, 
+                 bidirectional: bool=False, 
+                 return_states: bool=False
+                 ) -> None:
+        super().__init__()
+        self.n_layers = n_layers
+        self.bidirectional = bidirectional
+        self.return_states = return_states
+        self.in_projection = nn.Linear(input_dim, hidden_dim)
+        self.rnns = [nn.GRU(
+            input_size=hidden_dim,
+            hidden_size=hidden_dim,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=bidirectional
+        ) for _ in range(n_layers)]
+        if bidirectional:
+            self.projections = [nn.Linear(hidden_dim * 2, hidden_dim) for _ in range(n_layers)]
+
+        self.layer_norms = [nn.LayerNorm(hidden_dim) for _ in range(n_layers)]
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, 
+                x: torch.Tensor, 
+                in_states: torch.Tensor=None
+                ) -> Tuple[torch.Tensor, torch.Tensor]:
+        x = self.in_projection(x)
+        out_states = []
+        for layer in range(self.n_layers):
+            residual = x
+            
+            if in_states is not None:
+                output, state = self.rnns[layer](x, in_states[layer])
+            else:
+                output, state = self.rnns[layer](x)
+            if self.return_states:
+                out_states.append(state)
+            if self.bidirectional:
+                output = self.projections[layer](output)
+            output = self.dropout(output)
+        
+            x = self.layer_norms[layer](output + residual)
+
+        return x, out_states
+
+class CnnFrontend(nn.Module):
+    def __init__(self, 
+                 input_channels: int=1, 
+                 output_channels: int=32,
+                 stride: int=2
+                )  -> None:
+        super().__init__()
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        self.stride = stride
+        
+        self.conv = nn.Sequential(
+            nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=(stride, stride), padding=1),
+            nn.BatchNorm2d(output_channels),
+            nn.Hardtanh(0, 20, inplace=True),
+            
+            nn.Conv2d(output_channels, output_channels, kernel_size=3, stride=(1, 1), padding=1),
+            nn.BatchNorm2d(output_channels),
+            nn.Hardtanh(0, 20, inplace=True)
+        )
+
+    def forward(self, 
+                x: torch.Tensor, 
+                x_lens: torch.Tensor
+                ) -> Tuple[torch.Tensor, torch.Tensor]:
+        x = x.unsqueeze(1) 
+        x = self.conv(x)
+        batch, channels, time, freq = x.size()
+        x = x.permute(0, 2, 1, 3).contiguous()
+        x = x.view(batch, time, channels * freq)
+        return x, (x_lens/self.stride).long()
+
 class CnnFeatureExtractor(nn.Module):
     def __init__(self,
                  params: Namespace
@@ -49,7 +131,7 @@ class TimeDownsampler(nn.Module):
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Think about aliasing problems with this
         x_lens = (x_lens/self.stride).long()
-        x = x[:, :self.stride:]
+        x = F.avg_pool1d(x.transpose(1,2), kernel_size=self.stride, stride=self.stride).transpose(1,2)
         return x, x_lens
 
 
@@ -63,18 +145,31 @@ class RnntTranscriber(nn.Module):
         self.params = params
         self.individual = individual
         self.processor = AudioProcessor(params)
+        if params.time_downsample_factor > 0:
+            self.downsampler = TimeDownsampler(params.time_downsample_factor)
         if params.cnn_feat_extractor:
             self.cnn_feat_extractor = CnnFeatureExtractor(params)
-        self.input_layer_norm = nn.LayerNorm(params.n_mels)
+        if params.cnn_frontend:
+            self.cnn_frontend = CnnFrontend(stride=max([params.time_downsample_factor, 2]))
+            rnn_in_dim = int(self.cnn_frontend.output_channels*params.n_mels/self.cnn_frontend.stride)
+        else:
+            rnn_in_dim = params.n_mels
+        self.input_layer_norm = nn.LayerNorm(rnn_in_dim)
         if params.transcriber_type=='gru':
-            self.s2s_model = nn.GRU(params.n_mels,
+            self.s2s_model = nn.GRU(rnn_in_dim,
                                 params.transcriber_s2s_out_dim,
                                 params.n_transcriber_layers,
                                 batch_first=True,
                                 dropout=params.transcriber_s2s_dropout_p,
                                 bidirectional=params.transcriber_bidirectional)
+        elif params.transcriber_type=='residual_gru':
+            self.s2s_model = ResidualGru(rnn_in_dim,
+                                params.transcriber_s2s_out_dim,
+                                params.n_transcriber_layers,
+                                dropout=params.transcriber_s2s_dropout_p,
+                                bidirectional=params.transcriber_bidirectional)
         elif params.transcriber_type=='lstm':
-            self.s2s_model = nn.LSTM(params.n_mels,
+            self.s2s_model = nn.LSTM(rnn_in_dim,
                                 params.transcriber_s2s_out_dim,
                                 params.n_transcriber_layers,
                                 batch_first=True,
@@ -83,6 +178,7 @@ class RnntTranscriber(nn.Module):
         elif params.transcriber_type=='mamba':
             raise NotImplementedError
         self.linear = nn.Linear(params.transcriber_s2s_out_dim, params.joiner_in_dim)
+        self.output_layer_norm = nn.LayerNorm(params.joiner_in_dim)
         self.act_out = nn.ReLU()
         if individual:
             self.vocab_project = nn.Linear(params.joiner_in_dim, vocab_size)
@@ -96,14 +192,20 @@ class RnntTranscriber(nn.Module):
         x, x_lens = self.processor(x, x_lens)
         if self.params.cnn_feat_extractor:
             x, x_lens = self.cnn_feat_extractor(x, x_lens)
-        if self.params.downsample_time_factor > 0:
-            x, x_lens = self.time_downsampler(x, x_lens)
+        if self.params.time_downsample_factor > 0 and not self.params.cnn_frontend:
+            x, x_lens = self.downsampler(x, x_lens)
+        else:
+            x, x_lens = self.cnn_frontend(x, x_lens)
         x = self.input_layer_norm(x)
         x, state = self.s2s_model(x, state)
         x = self.linear(x)
         x = self.act_out(x)
+        x = self.output_layer_norm(x)
         if self.individual:
             x = self.vocab_project(x)
+            # blank_bias = torch.zeros_like(x)
+            # blank_bias[:,:,0] = -5.0
+            # x = x - blank_bias
             x = self.smax(x)
         return x, x_lens, state
 
@@ -134,6 +236,7 @@ class RnntPredictor(nn.Module):
         elif params.predictor_type=='mamba':
             raise NotImplementedError
         self.linear_out = nn.Linear(params.predictor_s2s_out_dim, params.joiner_in_dim)
+        self.act_out = nn.ReLU()
         self.output_layer_norm = nn.LayerNorm(params.joiner_in_dim)
         self.dropout = nn.Dropout(params.predictor_out_dropout_p)
         if individual:
@@ -147,6 +250,7 @@ class RnntPredictor(nn.Module):
         y = self.input_layer_norm(y)
         y, state = self.s2s_model(y, state)
         y = self.linear_out(y)
+        y = self.act_out(y)
         y = self.output_layer_norm(y)
         y = self.dropout(y)
         if self.individual:
@@ -161,6 +265,7 @@ class RnntPredictor(nn.Module):
         y = self.input_layer_norm(y)
         state = self.s2s_model(y, state)[1]
         out = self.linear_out(state)
+        out = self.act_out(out)
         out = self.output_layer_norm(out)
         return out, state
 
@@ -173,12 +278,15 @@ class RnntJoiner(nn.Module):
         super().__init__()
         self.linear = nn.Linear(params.joiner_in_dim, vocab_size)
         self.relu = nn.ReLU()
+        self.transcriber_weight = params.transcriber_weight
+        self.predictor_weight = params.predictor_weight
 
     def forward(self,
                 x: torch.Tensor, 
                 y: torch.Tensor, 
                 ) -> torch.Tensor:
-        h = x.unsqueeze(2).contiguous() + y.unsqueeze(1).contiguous()
+        h = self.transcriber_weight*x.unsqueeze(2).contiguous() + \
+                self.predictor_weight*y.unsqueeze(1).contiguous()
         h = self.relu(h)
         h = self.linear(h)
         return h
@@ -241,6 +349,8 @@ class RnntModel(nn.Module):
                     g_u, predictor_state = self.predict(predictor_input, predictor_state)
                     f_t = x[b,t]
                     h = self.joiner(f_t.unsqueeze(0).unsqueeze(0), g_u.unsqueeze(0))
+                    h = nn.functional.log_softmax(h, dim=-1)
+                    # h[0,0,0,self.blank_idx] = h[0,0,0,self.blank_idx]-4
                 idx = h.max(-1)[1].item()
                 if idx==self.blank_idx:
                     t += 1
@@ -260,3 +370,19 @@ class RnntModel(nn.Module):
                 y: torch.Tensor,
                 state: torch.Tensor):
         return self.predictor.step(y, state)
+
+    def freeze_transcriber(self):
+        for p in self.transcriber.parameters():
+            p.requires_grad = False
+
+    def freeze_predictor(self):
+        for p in self.predictor.parameters():
+            p.requires_grad = False
+
+    def unfreeze_transcriber(self):
+        for p in self.transcriber.parameters():
+            p.requires_grad = True
+
+    def unfreeze_predictor(self):
+        for p in self.predictor.parameters():
+            p.requires_grad = True

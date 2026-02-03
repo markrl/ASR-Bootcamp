@@ -99,8 +99,8 @@ class WavlmModule(LightningModule):
             wer = self.val_edit_dist/self.val_n_tokens
             self.log('val/wer', wer, on_step=False, prog_bar=True, 
                     sync_dist=True, on_epoch=True)
-            val_edit_dist = 0
-            val_n_tokens = 0
+            self.val_edit_dist = 0
+            self.val_n_tokens = 0
 
     def test_step(self, 
                   batch: tuple[PackedSequence, PackedSequence, torch.Tensor],
@@ -129,8 +129,8 @@ class WavlmModule(LightningModule):
         wer = self.test_edit_dist/self.test_n_tokens
         self.log('test/wer', wer, on_step=False, 
                  sync_dist=True, on_epoch=True)
-        test_edit_dist = 0
-        test_n_tokens = 0
+        self.test_edit_dist = 0
+        self.test_n_tokens = 0
 
     def configure_optimizers(self):
         if self.params.llrd_factor < 1:
