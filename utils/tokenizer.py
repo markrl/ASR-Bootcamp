@@ -41,9 +41,14 @@ class Tokenizer(nn.Module):
                                    '—': ' ',
                                    '€': ' euros ',
                                    '%': ' percent ',
-                                   '+': ' plus '}
-        if token_type=='character':
-            self.remove_symbols += self.alternative_apostrophes + self.space_symbols
+                                   '+': ' plus ',
+                                   'é': 'e',
+                                   'ü': 'u',
+                                   'ä': 'a',
+                                   'ö': 'o',
+                                   'á': 'a',
+                                   'í': 'i',
+                                   }
         self.special_tokens = {'unknown': '<unk>',
                                'start': '<sos>',
                                'end': '<eos>',
@@ -60,11 +65,18 @@ class Tokenizer(nn.Module):
         for symbol in self.other_replacements:
             text = text.replace(symbol, self.other_replacements[symbol])
         if self.remove_punctuation:
-            for symbol in self.remove_symbols + self.space_symbols:
-                text = text.replace(symbol, ' ')
+            if self.token_type=='word':
+                for symbol in self.remove_symbols + self.space_symbols:
+                    text = text.replace(symbol, ' ')
+            elif self.token_type=='character':
+                for symbol in self.remove_symbols:
+                    text = text.replace(symbol, '')
+                for symbol in self.space_symbols:
+                    text = text.replace(symbol, ' ')
         else:
-            for symbol in self.remove_symbols:
-                text = text.replace(symbol, ' '+symbol+' ')
+            if self.token_type=='word':
+                for symbol in self.remove_symbols:
+                    text = text.replace(symbol, ' '+symbol+' ')
         tokens = self.split_text(text)
         tokens = [token for token in tokens if token!='' and token!="'"]
         if self.use_sos:

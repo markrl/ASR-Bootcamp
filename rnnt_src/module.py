@@ -280,14 +280,14 @@ class AmModule(LightningModule):
         self.test_n_tokens = 0
 
     def configure_optimizers(self):
-        opt = torch.optim.AdamW(self.parameters(), self.params.lr/2,
+        opt = torch.optim.AdamW(self.parameters(), 1e-5,
                             weight_decay=self.params.wd)
         return opt
         # scheduler = torch.optim.lr_scheduler.LinearLR(
         #     opt,
-        #     start_factor=0.001,
+        #     start_factor=0.1,
         #     end_factor=1.0,
-        #     total_iters=10
+        #     total_iters=5
         # )
         # scheduler = torch.optim.lr_scheduler.MultiStepLR(
         #     opt,

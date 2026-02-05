@@ -38,7 +38,7 @@ def main():
     # Train components separately, if indicated
     if params.pretrain_am_epochs > 0:
         trainer = Trainer(
-            callbacks=[FineTuneLearningRateFinder(milestones=(0,10,20))],
+            # callbacks=[FineTuneLearningRateFinder(milestones=(0,10,20))],
             fast_dev_run=params.debug,
             accelerator='gpu',
             devices=params.gpus,
